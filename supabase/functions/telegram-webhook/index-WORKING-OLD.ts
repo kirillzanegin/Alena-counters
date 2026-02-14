@@ -1,12 +1,12 @@
-// Supabase Edge Function для обработки Telegram webhook
+// РАБОЧАЯ СТАРАЯ ВЕРСИЯ (только способ 1)
+// Используйте этот код для отката, если новая версия не работает
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const TELEGRAM_BOT_TOKEN = "8477674658:AAHdZS8bGIKINlXawLoNJiuukywWQgAt3E0";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") as string;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
-// URL мини‑приложения (лендинга), задаётся в переменных окружения Supabase
-const WEBAPP_URL = Deno.env.get("WEBAPP_URL") as string | undefined;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -25,45 +25,35 @@ interface TelegramUpdate {
   };
 }
 
-interface TelegramReplyMarkup {
-  inline_keyboard?: Array<
-    Array<{
-      text: string;
-      url?: string;
-      web_app?: { url: string };
-    }>
-  >;
-}
-
-async function sendTelegramMessage(
-  chatId: number,
-  text: string,
-  replyMarkup?: TelegramReplyMarkup
-) {
+async function sendTelegramMessage(chatId: number, text: string) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text: text,
-    parse_mode: "HTML",
-  };
-
-  if (replyMarkup) {
-    body.reply_markup = replyMarkup;
-  }
-
+  
   await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: text,
+      parse_mode: "HTML",
+    }),
   });
 }
 
 serve(async (req: Request) => {
   try {
-    // Разрешаем только POST запросы от Telegram
+    // CORS headers для обхода проверок
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    };
+
+    // Handle OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
+    }
+
     if (req.method !== "POST") {
-      return new Response("Method not allowed", { status: 405 });
+      return new Response("Method not allowed", { status: 405, headers: corsHeaders });
     }
 
     const update: TelegramUpdate = await req.json();
@@ -77,10 +67,8 @@ serve(async (req: Request) => {
     const chatId = message.chat?.id;
     const userId = message.from.id;
     const text = message.text.trim();
-    const firstName = message.from.first_name || "";
-    const lastName = message.from.last_name || "";
 
-    // Обработка команды /start с токеном
+    // Обработка команды /start с токеном (СПОСОБ 1)
     if (text.startsWith("/start ")) {
       const token = text.substring(7).trim();
       
@@ -92,7 +80,6 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Ищем токен в базе
       const { data: tokenData, error: tokenError } = await supabase
         .from("telegram_link_tokens")
         .select("*, employees(*)")
@@ -109,7 +96,6 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Проверяем срок действия токена
       const expiresAt = new Date(tokenData.expires_at);
       const now = new Date();
       
@@ -121,7 +107,6 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Проверяем, не привязан ли уже другой Telegram к этому сотруднику
       if (tokenData.employees.tg_id && tokenData.employees.tg_id !== String(userId)) {
         await sendTelegramMessage(
           chatId,
@@ -130,7 +115,6 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Привязываем Telegram ID к сотруднику
       const { error: updateError } = await supabase
         .from("employees")
         .update({ tg_id: String(userId) })
@@ -145,13 +129,11 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Отмечаем токен как использованный
       await supabase
         .from("telegram_link_tokens")
         .update({ used: true })
         .eq("id", tokenData.id);
 
-      // Отправляем успешное сообщение
       const employeeName = tokenData.employees.first_name 
         ? `${tokenData.employees.first_name} ${tokenData.employees.last_name || ""}`.trim()
         : tokenData.employees.email;
@@ -167,89 +149,18 @@ serve(async (req: Request) => {
       return new Response("OK", { status: 200 });
     }
 
-    // Обработка команды /start без токена (основной вход из Telegram / mini app)
+    // Обработка команды /start без токена
     if (text === "/start") {
-      if (!chatId) {
-        return new Response("OK", { status: 200 });
-      }
-
-      const webAppButton =
-        WEBAPP_URL &&
-        ({
-          inline_keyboard: [
-            [
-              {
-                text: "Открыть приложение",
-                web_app: { url: WEBAPP_URL },
-              },
-            ],
-          ],
-        } as TelegramReplyMarkup);
-
-      // Проверяем, не привязан ли уже этот Telegram ID
-      const { data: existingEmployee } = await supabase
-        .from("employees")
-        .select("*")
-        .eq("tg_id", String(userId))
-        .single();
-
-      if (existingEmployee) {
-        const name = existingEmployee.first_name 
-          ? `${existingEmployee.first_name} ${existingEmployee.last_name || ""}`.trim()
-          : "Не указано";
-
-        await sendTelegramMessage(
-          chatId,
-          `✅ <b>Аккаунт уже привязан!</b>\n\n` +
-          `Сотрудник: ${name}\n` +
-          `Email: ${existingEmployee.email}\n\n` +
-          `Нажмите кнопку ниже, чтобы открыть приложение.`,
-          webAppButton || undefined
-        );
-        return new Response("OK", { status: 200 });
-      }
-
-      // Генерируем 6-значный код
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      
-      // Срок действия - 1 час
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 1);
-
-      // Сохраняем код в базе (employee_id = NULL, tg_id = userId)
-      const { error: insertError } = await supabase
-        .from("telegram_link_tokens")
-        .insert([
-          {
-            employee_id: null,
-            tg_id: String(userId),
-            token: code,
-            expires_at: expiresAt.toISOString(),
-            used: false,
-          },
-        ]);
-
-      if (insertError) {
-        console.error("Failed to create code:", insertError);
-        await sendTelegramMessage(
-          chatId,
-          "❌ Ошибка при генерации кода.\n\nПопробуйте позже или используйте привязку через веб-приложение."
-        );
-        return new Response("OK", { status: 200 });
-      }
-
-      // Отправляем код + кнопку открытия мини‑приложения (если WEBAPP_URL задан)
-      const messageText =
-        `👋 Привет! Это бот системы <b>Энергомониторинг</b>.\n\n` +
-        `🔑 <b>Ваш код для привязки:</b>\n\n` +
-        `<code>${code}</code>\n\n` +
-        `<b>Как привязать аккаунт:</b>\n` +
-        `1. Нажмите кнопку «Открыть приложение» ниже\n` +
-        `2. Войдите с вашим email и паролем (если потребуется)\n` +
-        `3. Введите этот код на экране привязки\n\n` +
-        `⏰ Код действителен <b>1 час</b>`;
-
-      await sendTelegramMessage(chatId, messageText, webAppButton || undefined);
+      await sendTelegramMessage(
+        chatId,
+        "👋 Привет! Это бот системы <b>Энергомониторинг</b>.\n\n" +
+        "Для привязки аккаунта:\n" +
+        "1. Войдите в веб-приложение\n" +
+        "2. Откройте раздел «Telegram»\n" +
+        "3. Нажмите «Привязать Telegram»\n" +
+        "4. Перейдите по ссылке из приложения\n\n" +
+        "После привязки вы будете получать уведомления о важных событиях."
+      );
       return new Response("OK", { status: 200 });
     }
 

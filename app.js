@@ -118,7 +118,7 @@
       if (!supabase || !user) return Promise.resolve(null);
       return supabase
         .from("employees")
-        .select("id, first_name, last_name, is_active, tg_id")
+        .select("id, first_name, last_name, is_active, tg_id, role")
         .eq("auth_user_id", user.id)
         .maybeSingle()
         .then(function (result) {
@@ -338,6 +338,8 @@
 
   function MainMenu(props) {
     var tgLinked = !!props.employee.tg_id;
+    var role = props.employee.role || "user";
+    var roleLabel = role === "owner" ? "Владелец" : "Пользователь";
 
     return React.createElement(
       "div",
@@ -358,6 +360,14 @@
               props.employee.first_name || "Не указано",
               " ",
               props.employee.last_name || ""
+            ),
+            " ",
+            React.createElement(
+              "span",
+              { style: { fontSize: "11px", color: "var(--text-muted)", fontWeight: "normal" } },
+              "(",
+              roleLabel,
+              ")"
             )
           ),
           React.createElement(
@@ -370,7 +380,7 @@
             "Выйти"
           )
         ),
-        React.createElement(
+        role === "owner" && React.createElement(
           "div",
           { style: { display: "flex", justifyContent: "flex-start" } },
           React.createElement(
@@ -423,7 +433,7 @@
             props.onNavigate("readings");
           },
         }),
-        React.createElement(MenuTile, {
+        role === "owner" && React.createElement(MenuTile, {
           icon: "🏢",
           title: "Создать объект",
           description: "Добавить новый объект учёта в систему",
@@ -431,7 +441,7 @@
             props.onNavigate("create-object");
           },
         }),
-        React.createElement(MenuTile, {
+        role === "owner" && React.createElement(MenuTile, {
           icon: "✏️",
           title: "Редактировать объект",
           description: "Изменить данные объекта и показания счётчиков",
@@ -447,7 +457,7 @@
             props.onNavigate("stats");
           },
         }),
-        React.createElement(MenuTile, {
+        role === "owner" && React.createElement(MenuTile, {
           icon: "📦",
           title: "Архив",
           description: "Неактивные объекты и их реактивация",
@@ -510,11 +520,11 @@
       setSearching(true);
       setError(null);
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка загрузки объектов");
@@ -552,11 +562,11 @@
 
       var query = searchQuery.trim().toLowerCase();
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка поиска объектов");
@@ -1095,6 +1105,26 @@
     var success = successState[0];
     var setSuccess = successState[1];
 
+    var assignedEmployeeIdState = useState("");
+    var assignedEmployeeId = assignedEmployeeIdState[0];
+    var setAssignedEmployeeId = assignedEmployeeIdState[1];
+
+    var userListState = useState([]);
+    var userList = userListState[0];
+    var setUserList = userListState[1];
+
+    useEffect(function () {
+      supabase
+        .from("employees")
+        .select("id, first_name, last_name, email")
+        .eq("role", "user")
+        .eq("is_active", true)
+        .order("first_name")
+        .then(function (res) {
+          if (!res.error && res.data) setUserList(res.data);
+        });
+    }, []);
+
     function handleCounterToggle(type) {
       var updated = {};
       for (var key in selectedCounters) {
@@ -1145,6 +1175,7 @@
         contacts: contacts.trim() || null,
         comments: comments.trim() || null,
         is_active: true,
+        assigned_employee_id: assignedEmployeeId ? parseInt(assignedEmployeeId, 10) : null,
       };
 
       supabase
@@ -1196,6 +1227,7 @@
               setArea("");
               setContacts("");
               setComments("");
+              setAssignedEmployeeId("");
               setSelectedCounters({
                 "ХВС 1": false,
                 "ГВС 1": false,
@@ -1363,6 +1395,34 @@
             },
             disabled: submitting,
           })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement(
+            "div",
+            { className: "field-label" },
+            "Закрепить за пользователем"
+          ),
+          React.createElement(
+            "select",
+            {
+              className: "input",
+              value: assignedEmployeeId,
+              onChange: function (e) {
+                setAssignedEmployeeId(e.target.value);
+              },
+              disabled: submitting,
+            },
+            React.createElement("option", { value: "" }, "— Не назначен —"),
+            userList.map(function (emp) {
+              return React.createElement(
+                "option",
+                { key: emp.id, value: String(emp.id) },
+                (emp.first_name || "") + " " + (emp.last_name || "") + (emp.email ? " (" + emp.email + ")" : "")
+              );
+            })
+          )
         ),
         React.createElement("div", { className: "divider" }),
         React.createElement(
@@ -1840,11 +1900,11 @@
       setSearching(true);
       setError(null);
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка загрузки объектов");
@@ -1881,11 +1941,11 @@
 
       var query = searchQuery.trim().toLowerCase();
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка поиска объектов");
@@ -2568,6 +2628,26 @@
     var counterNumbers = counterNumbersState[0];
     var setCounterNumbers = counterNumbersState[1];
 
+    var assignedEmployeeIdState = useState("");
+    var assignedEmployeeId = assignedEmployeeIdState[0];
+    var setAssignedEmployeeId = assignedEmployeeIdState[1];
+
+    var userListState = useState([]);
+    var userList = userListState[0];
+    var setUserList = userListState[1];
+
+    useEffect(function () {
+      supabase
+        .from("employees")
+        .select("id, first_name, last_name, email")
+        .eq("role", "user")
+        .eq("is_active", true)
+        .order("first_name")
+        .then(function (res) {
+          if (!res.error && res.data) setUserList(res.data);
+        });
+    }, []);
+
     useEffect(function () {
       if (step === "select") {
         loadAllObjects();
@@ -2578,11 +2658,11 @@
       setSearching(true);
       setError(null);
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка загрузки объектов");
@@ -2619,11 +2699,11 @@
 
       var query = searchQuery.trim().toLowerCase();
 
-      supabase
-        .from("objects")
-        .select("*")
-        .eq("is_active", true)
-        .then(function (result) {
+      var q = supabase.from("objects").select("*").eq("is_active", true);
+      if (props.employee && props.employee.role === "user") {
+        q = q.eq("assigned_employee_id", props.employee.id);
+      }
+      q.then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Ошибка поиска объектов");
@@ -2666,6 +2746,7 @@
       setArea(obj.area ? String(obj.area) : "");
       setContacts(obj.contacts || "");
       setComments(obj.comments || "");
+      setAssignedEmployeeId(obj.assigned_employee_id ? String(obj.assigned_employee_id) : "");
       setEditedReadings({});
       setEditedDates({});
       setSelectedMonth("");
@@ -2728,6 +2809,7 @@
         area: area.trim() ? parseFloat(area) : null,
         contacts: contacts.trim() || null,
         comments: comments.trim() || null,
+        assigned_employee_id: assignedEmployeeId ? parseInt(assignedEmployeeId, 10) : null,
       };
 
       supabase
@@ -3373,6 +3455,34 @@
               },
               disabled: submitting,
             })
+          ),
+          React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { className: "field-label" },
+              "Закрепить за пользователем"
+            ),
+            React.createElement(
+              "select",
+              {
+                className: "input",
+                value: assignedEmployeeId,
+                onChange: function (e) {
+                  setAssignedEmployeeId(e.target.value);
+                },
+                disabled: submitting,
+              },
+              React.createElement("option", { value: "" }, "— Не назначен —"),
+              userList.map(function (emp) {
+                return React.createElement(
+                  "option",
+                  { key: emp.id, value: String(emp.id) },
+                  (emp.first_name || "") + " " + (emp.last_name || "") + (emp.email ? " (" + emp.email + ")" : "")
+                );
+              })
+            )
           ),
           React.createElement("div", { className: "divider" }),
           React.createElement(
