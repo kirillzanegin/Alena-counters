@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <title>Энергомониторинг — Ввод показаний</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <style>
       :root {
         color-scheme: light dark;
@@ -25,9 +27,15 @@
         box-sizing: border-box;
       }
 
+      html {
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
+      }
+
       body {
         margin: 0;
         min-height: 100vh;
+        min-height: -webkit-fill-available;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           sans-serif;
         background: radial-gradient(
@@ -46,11 +54,16 @@
         align-items: center;
         justify-content: center;
         padding: 24px;
+        padding-left: max(24px, env(safe-area-inset-left));
+        padding-right: max(24px, env(safe-area-inset-right));
+        padding-top: max(24px, env(safe-area-inset-top));
+        padding-bottom: max(24px, env(safe-area-inset-bottom));
+        overflow-x: hidden;
       }
 
       .app-shell {
         width: 100%;
-        max-width: 960px;
+        max-width: 1160px;
         border-radius: 24px;
         border: 1px solid var(--border-subtle);
         background: radial-gradient(
@@ -66,7 +79,7 @@
         box-shadow:
           0 24px 80px rgba(15, 23, 42, 0.9),
           0 0 0 1px rgba(15, 23, 42, 1);
-        overflow: hidden;
+        overflow: visible;
         display: flex;
         flex-direction: column;
       }
@@ -163,19 +176,124 @@
 
       @media (max-width: 768px) {
         body {
-          padding: 16px;
+          padding: 12px;
+          padding-left: max(12px, env(safe-area-inset-left));
+          padding-right: max(12px, env(safe-area-inset-right));
+          padding-top: max(12px, env(safe-area-inset-top));
+          padding-bottom: max(12px, env(safe-area-inset-bottom));
+        }
+
+        .app-shell {
+          border-radius: 16px;
         }
 
         .app-header {
           flex-direction: column;
           align-items: flex-start;
           gap: 10px;
+          padding: 14px 16px 12px;
+        }
+
+        .app-main {
+          padding: 14px 16px 20px;
+          align-items: stretch;
+        }
+
+        .panel {
+          padding: 14px 16px 14px;
+          border-radius: 14px;
+        }
+
+        .panel-title {
+          font-size: 14px;
+        }
+
+        .panel-subtitle {
+          font-size: 11px;
+        }
+
+        .back-button {
+          min-height: 44px;
+          padding: 10px 16px;
+          font-size: 13px;
+        }
+
+        .button {
+          min-height: 44px;
+          padding: 12px 18px;
+          font-size: 13px;
+        }
+
+        .input,
+        textarea.input {
+          min-height: 44px;
+          padding: 10px 12px;
+          font-size: 16px;
+        }
+
+        .menu-tile {
+          min-height: 72px;
+          padding: 16px 18px;
+        }
+
+        .user-card {
+          min-height: 48px;
+          padding: 12px 14px;
+        }
+
+        .button-ghost {
+          min-height: 40px;
+          padding: 8px 12px;
+        }
+
+        select.input {
+          min-height: 44px;
+          font-size: 16px;
+        }
+
+        .top-bar {
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .hint {
+          font-size: 12px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        body {
+          padding: 8px;
+          padding-left: max(8px, env(safe-area-inset-left));
+          padding-right: max(8px, env(safe-area-inset-right));
+          padding-top: max(8px, env(safe-area-inset-top));
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+
+        .app-shell {
+          border-radius: 12px;
+        }
+
+        .app-main {
+          padding: 12px 14px 16px;
+        }
+
+        .panel {
+          padding: 12px 14px 12px;
+        }
+
+        .app-title-main {
+          font-size: 15px;
+        }
+
+        .menu-grid {
+          gap: 12px;
         }
       }
 
       .panel {
         width: 100%;
-        max-width: 900px;
+        max-width: 1040px;
         border-radius: 18px;
         border: 1px solid rgba(148, 163, 184, 0.2);
         background: radial-gradient(
@@ -721,7 +839,7 @@
 
       .menu-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(4, 1fr);
         gap: 16px;
         margin-top: 12px;
       }
@@ -919,7 +1037,30 @@
       table tr:hover td {
         background: rgba(56, 189, 248, 0.05);
       }
+
+      /* Открытие в Telegram / мобильном WebView */
+      @media (max-width: 768px) {
+        .telegram-webview .app-shell {
+          border-radius: 0;
+          max-width: 100%;
+        }
+        .telegram-webview body {
+          padding: 0;
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+          padding-top: env(safe-area-inset-top);
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+      }
     </style>
+    <script>
+      (function() {
+        var ua = typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent : "";
+        if (/Telegram|TelegramBot|tgweb/i.test(ua)) {
+          document.documentElement.classList.add("telegram-webview");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root">

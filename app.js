@@ -380,7 +380,7 @@
             "Выйти"
           )
         ),
-        role === "owner" && React.createElement(
+        React.createElement(
           "div",
           { style: { display: "flex", justifyContent: "flex-start" } },
           React.createElement(
@@ -402,7 +402,9 @@
                 height: "28px",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px"
+                gap: "6px",
+                cursor: "pointer",
+                pointerEvents: "auto",
               }
             },
             !tgLinked && React.createElement(
@@ -463,6 +465,14 @@
           description: "Неактивные объекты и их реактивация",
           onClick: function () {
             props.onNavigate("archive");
+          },
+        }),
+        role === "owner" && React.createElement(MenuTile, {
+          icon: "👥",
+          title: "Управление пользователями",
+          description: "Создание учётных записей и назначение ролей",
+          onClick: function () {
+            props.onNavigate("users");
           },
         })
       )
@@ -4444,6 +4454,915 @@
     }
   }
 
+  function UserManagementScreen(props) {
+    var viewModeState = useState("create");
+    var viewMode = viewModeState[0];
+    var setViewMode = viewModeState[1];
+
+    var emailState = useState("");
+    var passwordState = useState("");
+    var firstNameState = useState("");
+    var lastNameState = useState("");
+    var roleState = useState("user");
+    var submittingState = useState(false);
+    var errorState = useState(null);
+    var successState = useState(null);
+    var createdCredentialsState = useState(null);
+    var objectsState = useState([]);
+    var selectedObjectIdsState = useState({});
+    var email = emailState[0];
+    var setEmail = emailState[1];
+    var password = passwordState[0];
+    var setPassword = passwordState[1];
+    var firstName = firstNameState[0];
+    var setFirstName = firstNameState[1];
+    var lastName = lastNameState[0];
+    var setLastName = lastNameState[1];
+    var role = roleState[0];
+    var setRole = roleState[1];
+    var submitting = submittingState[0];
+    var setSubmitting = submittingState[1];
+    var error = errorState[0];
+    var setError = errorState[1];
+    var success = successState[0];
+    var setSuccess = successState[1];
+    var createdCredentials = createdCredentialsState[0];
+    var setCreatedCredentials = createdCredentialsState[1];
+    var copiedToClipboardState = useState(false);
+    var copiedToClipboard = copiedToClipboardState[0];
+    var setCopiedToClipboard = copiedToClipboardState[1];
+    var objects = objectsState[0];
+    var setObjects = objectsState[1];
+    var selectedObjectIds = selectedObjectIdsState[0];
+    var setSelectedObjectIds = selectedObjectIdsState[1];
+
+    var employeesListState = useState([]);
+    var selectedEmployeeIdState = useState("");
+    var editEmailState = useState("");
+    var editPasswordState = useState("");
+    var editFirstNameState = useState("");
+    var editLastNameState = useState("");
+    var editRoleState = useState("user");
+    var editObjectsState = useState([]);
+    var editSelectedObjectIdsState = useState({});
+    var editSubmittingState = useState(false);
+    var editErrorState = useState(null);
+    var editSuccessState = useState(null);
+    var editUserSearchState = useState("");
+    var employeesList = employeesListState[0];
+    var setEmployeesList = employeesListState[1];
+    var selectedEmployeeId = selectedEmployeeIdState[0];
+    var setSelectedEmployeeId = selectedEmployeeIdState[1];
+    var editUserSearch = editUserSearchState[0];
+    var setEditUserSearch = editUserSearchState[1];
+    var editEmail = editEmailState[0];
+    var setEditEmail = editEmailState[1];
+    var editPassword = editPasswordState[0];
+    var setEditPassword = editPasswordState[1];
+    var editFirstName = editFirstNameState[0];
+    var setEditFirstName = editFirstNameState[1];
+    var editLastName = editLastNameState[0];
+    var setEditLastName = editLastNameState[1];
+    var editRole = editRoleState[0];
+    var setEditRole = editRoleState[1];
+    var editObjects = editObjectsState[0];
+    var setEditObjects = editObjectsState[1];
+    var editSelectedObjectIds = editSelectedObjectIdsState[0];
+    var setEditSelectedObjectIds = editSelectedObjectIdsState[1];
+    var editSubmitting = editSubmittingState[0];
+    var setEditSubmitting = editSubmittingState[1];
+    var editError = editErrorState[0];
+    var setEditError = editErrorState[1];
+    var editSuccess = editSuccessState[0];
+    var setEditSuccess = editSuccessState[1];
+
+    useEffect(function () {
+      if (viewMode !== "create") return;
+      supabase
+        .from("objects")
+        .select("id, object_name, object_address")
+        .eq("is_active", true)
+        .is("assigned_employee_id", null)
+        .order("object_name")
+        .then(function (res) {
+          if (!res.error && res.data) setObjects(res.data);
+        });
+    }, [viewMode]);
+
+    useEffect(function () {
+      if (viewMode !== "edit") return;
+      supabase
+        .from("employees")
+        .select("id, email, first_name, last_name, role")
+        .eq("is_active", true)
+        .order("first_name")
+        .then(function (res) {
+          if (!res.error && res.data) setEmployeesList(res.data);
+        });
+    }, [viewMode]);
+
+    useEffect(function () {
+      if (viewMode !== "edit" || !selectedEmployeeId) {
+        setEditObjects([]);
+        setEditSelectedObjectIds({});
+        return;
+      }
+      var eid = parseInt(selectedEmployeeId, 10);
+      if (!eid) return;
+      supabase
+        .from("employees")
+        .select("id, email, first_name, last_name, role")
+        .eq("id", eid)
+        .eq("is_active", true)
+        .single()
+        .then(function (empRes) {
+          if (!empRes.error && empRes.data) {
+            var emp = empRes.data;
+            setEditEmail(emp.email || "");
+            setEditFirstName(emp.first_name || "");
+            setEditLastName(emp.last_name || "");
+            setEditRole(emp.role || "user");
+            setEditPassword("");
+          }
+        });
+      supabase
+        .from("objects")
+        .select("id, object_name, object_address, assigned_employee_id")
+        .eq("is_active", true)
+        .or("assigned_employee_id.is.null,assigned_employee_id.eq." + eid)
+        .order("object_name")
+        .then(function (res) {
+          if (!res.error && res.data) {
+            setEditObjects(res.data);
+            var checked = {};
+            res.data.forEach(function (o) {
+              if (o.assigned_employee_id === eid) checked[o.id] = true;
+            });
+            setEditSelectedObjectIds(checked);
+          }
+        });
+    }, [viewMode, selectedEmployeeId]);
+
+    function toggleObject(id) {
+      var next = Object.assign({}, selectedObjectIds);
+      next[id] = !next[id];
+      setSelectedObjectIds(next);
+    }
+
+    function copyCredentialsToClipboard() {
+      if (!createdCredentials) return;
+      var text = "Данные для доступа:\nEmail: " + createdCredentials.email + "\nПароль: " + createdCredentials.password;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          setCopiedToClipboard(true);
+          setTimeout(function () { setCopiedToClipboard(false); }, 2000);
+        });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+          setCopiedToClipboard(true);
+          setTimeout(function () { setCopiedToClipboard(false); }, 2000);
+        } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    }
+
+    function toggleEditObject(id) {
+      var next = Object.assign({}, editSelectedObjectIds);
+      next[id] = !next[id];
+      setEditSelectedObjectIds(next);
+    }
+
+    function handleEditSubmit(e) {
+      e.preventDefault();
+      setEditError(null);
+      setEditSuccess(null);
+      if (!selectedEmployeeId) {
+        setEditError("Выберите пользователя.");
+        return;
+      }
+      var eid = parseInt(selectedEmployeeId, 10);
+      if (!eid) return;
+      if (!editEmail.trim() || !editFirstName.trim()) {
+        setEditError("Заполните email и имя.");
+        return;
+      }
+      if (editPassword.length > 0 && editPassword.length < 6) {
+        setEditError("Пароль не менее 6 символов.");
+        return;
+      }
+      var token = props.session && props.session.access_token;
+      if (!token) {
+        setEditError("Нет сессии. Войдите заново.");
+        return;
+      }
+      var objectIds = editRole === "user" ? editObjects.filter(function (o) { return editSelectedObjectIds[o.id]; }).map(function (o) { return o.id; }) : [];
+      setEditSubmitting(true);
+      var body = {
+        employee_id: eid,
+        email: editEmail.trim(),
+        first_name: editFirstName.trim(),
+        last_name: editLastName.trim() || undefined,
+        role: editRole,
+        object_ids: objectIds,
+      };
+      if (editPassword.length >= 6) body.password = editPassword;
+      fetch(SUPABASE_URL + "/functions/v1/admin-update-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body),
+      })
+        .then(function (res) { return res.json().then(function (data) { return { status: res.status, data: data }; }); })
+        .then(function (_ref) {
+          var status = _ref.status;
+          var data = _ref.data;
+          setEditSubmitting(false);
+          if (status >= 200 && status < 300) {
+            setEditSuccess(data.message || "Параметры сохранены.");
+          } else {
+            setEditError(data.error || "Ошибка сохранения.");
+          }
+        })
+        .catch(function (err) {
+          setEditSubmitting(false);
+          setEditError(err.message || "Ошибка сети.");
+        });
+    }
+
+    function handleSubmit(e) {
+      e.preventDefault();
+      setError(null);
+      setSuccess(null);
+      setCreatedCredentials(null);
+      if (!email.trim() || !password || !firstName.trim()) {
+        setError("Заполните email, пароль и имя.");
+        return;
+      }
+      if (password.length < 6) {
+        setError("Пароль не менее 6 символов.");
+        return;
+      }
+      var token = props.session && props.session.access_token;
+      if (!token) {
+        setError("Нет сессии. Войдите заново.");
+        return;
+      }
+      var objectIds = role === "user" ? objects.filter(function (o) { return selectedObjectIds[o.id]; }).map(function (o) { return o.id; }) : [];
+      setSubmitting(true);
+      fetch(SUPABASE_URL + "/functions/v1/admin-create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+          first_name: firstName.trim(),
+          last_name: lastName.trim() || undefined,
+          role: role,
+          object_ids: objectIds.length ? objectIds : undefined,
+        }),
+      })
+        .then(function (res) { return res.json().then(function (data) { return { status: res.status, data: data }; }); })
+        .then(function (_ref) {
+          var status = _ref.status;
+          var data = _ref.data;
+          setSubmitting(false);
+          if (status >= 200 && status < 300) {
+            setCreatedCredentials({ email: email.trim(), password: password });
+            setSuccess(data.message || "Пользователь создан.");
+            setEmail("");
+            setPassword("");
+            setFirstName("");
+            setLastName("");
+            setRole("user");
+            setSelectedObjectIds({});
+          } else {
+            setError(data.error || "Ошибка создания пользователя.");
+          }
+        })
+        .catch(function (err) {
+          setSubmitting(false);
+          setError(err.message || "Ошибка сети.");
+        });
+    }
+
+    return React.createElement(
+      "div",
+      null,
+      React.createElement(
+        "div",
+        { className: "top-bar" },
+        React.createElement(
+          "button",
+          { className: "back-button", onClick: function () { props.onNavigate("menu"); } },
+          "← Назад в меню"
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "panel-header" },
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "panel-title" }, "Управление пользователями"),
+          React.createElement("div", { className: "panel-subtitle" }, "Создание учётной записи и назначение роли")
+        ),
+        React.createElement("span", { className: "badge" }, "Шаг 4")
+      ),
+      React.createElement("div", { className: "divider" }),
+      React.createElement(
+        "div",
+        { style: { marginBottom: "16px", maxWidth: "400px" } },
+        viewMode === "create"
+          ? React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "button",
+                onClick: function () { setViewMode("edit"); setError(null); setSuccess(null); setEditError(null); setEditSuccess(null); setSelectedEmployeeId(""); setEditUserSearch(""); },
+              },
+              "Изменить пользователя"
+            )
+          : React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "button primary",
+                onClick: function () { setViewMode("create"); setError(null); setSuccess(null); setEditError(null); setEditSuccess(null); },
+              },
+              "Создать учётную запись"
+            )
+      ),
+      viewMode === "create" && React.createElement(
+        "form",
+        { className: "form", onSubmit: handleSubmit, style: { maxWidth: "400px" } },
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Email (логин)", React.createElement("span", null, "*")),
+          React.createElement("input", {
+            className: "input",
+            type: "email",
+            required: true,
+            value: email,
+            onChange: function (e) { setEmail(e.target.value); },
+            disabled: submitting,
+            placeholder: "user@example.com",
+          })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Пароль", React.createElement("span", null, "*")),
+          React.createElement("input", {
+            className: "input",
+            type: "password",
+            required: true,
+            minLength: 6,
+            value: password,
+            onChange: function (e) { setPassword(e.target.value); },
+            disabled: submitting,
+            placeholder: "Не менее 6 символов",
+          })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Имя", React.createElement("span", null, "*")),
+          React.createElement("input", {
+            className: "input",
+            type: "text",
+            required: true,
+            value: firstName,
+            onChange: function (e) { setFirstName(e.target.value); },
+            disabled: submitting,
+            placeholder: "Имя",
+          })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Фамилия"),
+          React.createElement("input", {
+            className: "input",
+            type: "text",
+            value: lastName,
+            onChange: function (e) { setLastName(e.target.value); },
+            disabled: submitting,
+            placeholder: "Фамилия",
+          })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label", style: { marginBottom: "8px" } }, "Роль"),
+          React.createElement(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                border: "1px solid rgba(148, 163, 184, 0.4)",
+                background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 1))",
+                color: "#e5e7eb",
+              },
+            },
+            React.createElement(
+              "label",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: submitting ? "default" : "pointer",
+                  padding: "8px 10px",
+                  borderRadius: "10px",
+                  background: role === "user" ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.6)",
+                  border: "1px solid rgba(148, 163, 184, 0.25)",
+                },
+              },
+              React.createElement("input", {
+                type: "checkbox",
+                checked: role === "user",
+                onChange: function () { if (!submitting) setRole("user"); },
+                disabled: submitting,
+                style: { flexShrink: 0 },
+              }),
+              React.createElement("span", { style: { fontWeight: 500 } }, "Пользователь")
+            ),
+            React.createElement(
+              "label",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: submitting ? "default" : "pointer",
+                  padding: "8px 10px",
+                  borderRadius: "10px",
+                  background: role === "owner" ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.6)",
+                  border: "1px solid rgba(148, 163, 184, 0.25)",
+                },
+              },
+              React.createElement("input", {
+                type: "checkbox",
+                checked: role === "owner",
+                onChange: function () { if (!submitting) setRole("owner"); },
+                disabled: submitting,
+                style: { flexShrink: 0 },
+              }),
+              React.createElement("span", { style: { fontWeight: 500 } }, "Владелец")
+            )
+          )
+        ),
+        role === "user" && objects.length > 0 && React.createElement(
+          "div",
+          { style: { marginTop: "16px" } },
+          React.createElement("div", { className: "field-label", style: { marginBottom: "8px" } }, "Объекты для пользователя (выберите один или несколько)"),
+          React.createElement(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                maxHeight: "220px",
+                overflowY: "auto",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                border: "1px solid rgba(148, 163, 184, 0.4)",
+                background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 1))",
+                color: "#e5e7eb",
+              },
+            },
+            objects.map(function (obj) {
+              var name = obj.object_name || "Объект #" + obj.id;
+              var address = obj.object_address ? String(obj.object_address).trim() : "";
+              return React.createElement(
+                "label",
+                {
+                  key: obj.id,
+                  style: {
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    cursor: submitting ? "default" : "pointer",
+                    padding: "8px 10px",
+                    borderRadius: "10px",
+                    background: "rgba(15, 23, 42, 0.6)",
+                    border: "1px solid rgba(148, 163, 184, 0.25)",
+                  },
+                },
+                React.createElement("input", {
+                  type: "checkbox",
+                  checked: !!selectedObjectIds[obj.id],
+                  onChange: function () { toggleObject(obj.id); },
+                  disabled: submitting,
+                  style: { marginTop: "3px", flexShrink: 0 },
+                }),
+                React.createElement(
+                  "div",
+                  { style: { flex: 1, minWidth: 0 } },
+                  React.createElement("div", { style: { fontSize: "13px", fontWeight: 500, color: "#e5e7eb" } }, name),
+                  address ? React.createElement("div", { style: { fontSize: "12px", color: "#9ca3af", marginTop: "2px" } }, address) : null
+                )
+              );
+            })
+          )
+        ),
+        React.createElement(
+          "button",
+          { className: "button", type: "submit", disabled: submitting },
+          submitting ? "Создание..." : "Создать учётную запись"
+        )
+      ),
+      viewMode === "edit" && React.createElement(
+        "div",
+        null,
+        React.createElement(
+          "div",
+          { style: { marginBottom: "16px" } },
+          React.createElement("div", { className: "field-label" }, "Поиск пользователя"),
+          React.createElement(
+            "div",
+            { className: "hint", style: { marginBottom: "8px" } },
+            "Введите имя, email или роль для поиска, или оставьте пустым для отображения всех пользователей"
+          ),
+          React.createElement(
+            "div",
+            { style: { display: "flex", gap: "8px" } },
+            React.createElement("input", {
+              className: "input",
+              type: "text",
+              placeholder: "Поиск по имени, email или роли",
+              value: editUserSearch,
+              onChange: function (e) { setEditUserSearch(e.target.value); },
+              disabled: editSubmitting,
+            }),
+            React.createElement(
+              "button",
+              {
+                className: "button",
+                type: "button",
+                onClick: function () { setEditUserSearch(""); },
+                disabled: editSubmitting,
+                style: { marginTop: 0 },
+              },
+              editUserSearch.trim() ? "Очистить" : "Обновить"
+            )
+          )
+        ),
+        (function () {
+          var q = (editUserSearch || "").trim().toLowerCase();
+          var filtered = q
+            ? employeesList.filter(function (emp) {
+                var name = ((emp.first_name || "") + " " + (emp.last_name || "")).trim().toLowerCase();
+                var email = (emp.email || "").toLowerCase();
+                var roleStr = (emp.role === "owner" ? "владелец" : "пользователь");
+                return name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || roleStr.indexOf(q) >= 0;
+              })
+            : employeesList;
+          return filtered.length > 0
+            ? React.createElement(
+                "div",
+                { style: { marginBottom: "20px" } },
+                React.createElement(
+                  "div",
+                  { className: "field-label" },
+                  q ? "Найдено пользователей: " + filtered.length : "Пользователей: " + filtered.length + " (отсортированы по алфавиту)"
+                ),
+                React.createElement(
+                  "div",
+                  { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+                  filtered.map(function (emp) {
+                    var name = (emp.first_name || "") + " " + (emp.last_name || "").trim();
+                    var sub = (emp.email || "") + " — " + (emp.role === "owner" ? "Владелец" : "Пользователь");
+                    var isSelected = String(emp.id) === selectedEmployeeId;
+                    return React.createElement(
+                      "div",
+                      {
+                        key: emp.id,
+                        className: "user-card",
+                        onClick: function () { setSelectedEmployeeId(isSelected ? "" : String(emp.id)); },
+                        style: { cursor: "pointer" },
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "user-card-main" },
+                        React.createElement(
+                          "div",
+                          { className: "user-meta" },
+                          React.createElement("div", { className: "user-name" }, name || "—"),
+                          React.createElement("div", { className: "user-role" }, sub)
+                        )
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          className: "button-ghost",
+                          type: "button",
+                          onClick: function (e) {
+                            e.stopPropagation();
+                            setSelectedEmployeeId(isSelected ? "" : String(emp.id));
+                          },
+                        },
+                        isSelected ? "Отменить выбор" : "Выбрать →"
+                      )
+                    );
+                  })
+                )
+              )
+            : React.createElement(
+                "div",
+                { style: { marginBottom: "20px", padding: "12px", color: "var(--text-muted)", fontSize: "13px" } },
+                "Никого не найдено. Измените запрос или очистите поиск."
+              );
+        })(),
+        React.createElement(
+          "form",
+          { className: "form", onSubmit: handleEditSubmit, style: { maxWidth: "400px" } },
+          selectedEmployeeId && React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "button-ghost",
+                onClick: function () { setSelectedEmployeeId(""); },
+                style: { marginBottom: "12px", padding: "4px 0" },
+              },
+              "← Выбрать другого пользователя"
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label" }, "Email (логин)", React.createElement("span", null, "*")),
+              React.createElement("input", {
+                className: "input",
+                type: "email",
+                required: true,
+                value: editEmail,
+                onChange: function (e) { setEditEmail(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "user@example.com",
+              })
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label" }, "Новый пароль (оставьте пустым, чтобы не менять)"),
+              React.createElement("input", {
+                className: "input",
+                type: "password",
+                value: editPassword,
+                onChange: function (e) { setEditPassword(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "Не менее 6 символов",
+              })
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label" }, "Имя", React.createElement("span", null, "*")),
+              React.createElement("input", {
+                className: "input",
+                type: "text",
+                required: true,
+                value: editFirstName,
+                onChange: function (e) { setEditFirstName(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "Имя",
+              })
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label" }, "Фамилия"),
+              React.createElement("input", {
+                className: "input",
+                type: "text",
+                value: editLastName,
+                onChange: function (e) { setEditLastName(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "Фамилия",
+              })
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label", style: { marginBottom: "8px" } }, "Роль"),
+              React.createElement(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    padding: "10px 12px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(148, 163, 184, 0.4)",
+                    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 1))",
+                    color: "#e5e7eb",
+                  },
+                },
+                React.createElement(
+                  "label",
+                  {
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      cursor: editSubmitting ? "default" : "pointer",
+                      padding: "8px 10px",
+                      borderRadius: "10px",
+                      background: editRole === "user" ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(148, 163, 184, 0.25)",
+                    },
+                  },
+                  React.createElement("input", {
+                    type: "checkbox",
+                    checked: editRole === "user",
+                    onChange: function () { if (!editSubmitting) setEditRole("user"); },
+                    disabled: editSubmitting,
+                    style: { flexShrink: 0 },
+                  }),
+                  React.createElement("span", { style: { fontWeight: 500 } }, "Пользователь")
+                ),
+                React.createElement(
+                  "label",
+                  {
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      cursor: editSubmitting ? "default" : "pointer",
+                      padding: "8px 10px",
+                      borderRadius: "10px",
+                      background: editRole === "owner" ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(148, 163, 184, 0.25)",
+                    },
+                  },
+                  React.createElement("input", {
+                    type: "checkbox",
+                    checked: editRole === "owner",
+                    onChange: function () { if (!editSubmitting) setEditRole("owner"); },
+                    disabled: editSubmitting,
+                    style: { flexShrink: 0 },
+                  }),
+                  React.createElement("span", { style: { fontWeight: 500 } }, "Владелец")
+                )
+              )
+            ),
+            editRole === "user" && editObjects.length > 0 && React.createElement(
+              "div",
+              { style: { marginTop: "16px" } },
+              React.createElement("div", { className: "field-label", style: { marginBottom: "8px" } }, "Объекты для пользователя (выберите один или несколько)"),
+              React.createElement(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    maxHeight: "220px",
+                    overflowY: "auto",
+                    padding: "10px 12px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(148, 163, 184, 0.4)",
+                    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 1))",
+                    color: "#e5e7eb",
+                  },
+                },
+                editObjects.map(function (obj) {
+                  var name = obj.object_name || "Объект #" + obj.id;
+                  var address = obj.object_address ? String(obj.object_address).trim() : "";
+                  return React.createElement(
+                    "label",
+                    {
+                      key: obj.id,
+                      style: {
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        cursor: editSubmitting ? "default" : "pointer",
+                        padding: "8px 10px",
+                        borderRadius: "10px",
+                        background: "rgba(15, 23, 42, 0.6)",
+                        border: "1px solid rgba(148, 163, 184, 0.25)",
+                      },
+                    },
+                    React.createElement("input", {
+                      type: "checkbox",
+                      checked: !!editSelectedObjectIds[obj.id],
+                      onChange: function () { toggleEditObject(obj.id); },
+                      disabled: editSubmitting,
+                      style: { marginTop: "3px", flexShrink: 0 },
+                    }),
+                    React.createElement(
+                      "div",
+                      { style: { flex: 1, minWidth: 0 } },
+                      React.createElement("div", { style: { fontSize: "13px", fontWeight: 500, color: "#e5e7eb" } }, name),
+                      address ? React.createElement("div", { style: { fontSize: "12px", color: "#9ca3af", marginTop: "2px" } }, address) : null
+                    )
+                  );
+                })
+              )
+            ),
+            React.createElement(
+              "button",
+              { className: "button", type: "submit", disabled: editSubmitting },
+              editSubmitting ? "Сохранение..." : "Сохранить параметры"
+            )
+          )
+        )
+      ),
+      viewMode === "create" && error && React.createElement(
+        "div",
+        { className: "alert alert-error", style: { marginTop: "16px" } },
+        React.createElement("div", { className: "alert-icon" }, "!"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Ошибка"),
+          React.createElement("div", { className: "alert-text" }, error)
+        )
+      ),
+      viewMode === "create" && success && React.createElement(
+        "div",
+        { className: "alert alert-success", style: { marginTop: "16px" } },
+        React.createElement("div", { className: "alert-icon" }, "✓"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Готово"),
+          React.createElement("div", { className: "alert-text" }, success)
+        )
+      ),
+      viewMode === "edit" && editError && React.createElement(
+        "div",
+        { className: "alert alert-error", style: { marginTop: "16px" } },
+        React.createElement("div", { className: "alert-icon" }, "!"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Ошибка"),
+          React.createElement("div", { className: "alert-text" }, editError)
+        )
+      ),
+      viewMode === "edit" && editSuccess && React.createElement(
+        "div",
+        { className: "alert alert-success", style: { marginTop: "16px" } },
+        React.createElement("div", { className: "alert-icon" }, "✓"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Готово"),
+          React.createElement("div", { className: "alert-text" }, editSuccess)
+        )
+      ),
+      viewMode === "create" && createdCredentials && React.createElement(
+        "div",
+        {
+          role: "button",
+          tabIndex: 0,
+          onClick: copyCredentialsToClipboard,
+          onKeyDown: function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyCredentialsToClipboard(); } },
+          style: {
+            marginTop: "20px",
+            padding: "16px 18px",
+            borderRadius: "12px",
+            border: "2px solid rgba(56, 189, 248, 0.5)",
+            background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 1))",
+            maxWidth: "400px",
+            cursor: "pointer",
+            userSelect: "none",
+            WebkitTapHighlightColor: "transparent",
+          },
+        },
+        React.createElement("div", { style: { fontWeight: 600, marginBottom: "10px", fontSize: "1rem", color: "#e5e7eb" } }, "Данные для доступа: email и пароль"),
+        React.createElement("div", { style: { fontSize: "12px", color: "#9ca3af", marginBottom: "10px" } }, copiedToClipboard ? "Скопировано!" : "Нажмите или коснитесь, чтобы скопировать"),
+        React.createElement("div", { style: { marginBottom: "8px", color: "#e5e7eb" } },
+          React.createElement("span", { style: { fontWeight: 500 } }, "Email: "),
+          React.createElement("span", { style: { fontFamily: "monospace", wordBreak: "break-all" } }, createdCredentials.email)
+        ),
+        React.createElement("div", { style: { color: "#e5e7eb" } },
+          React.createElement("span", { style: { fontWeight: 500 } }, "Пароль: "),
+          React.createElement("span", { style: { fontFamily: "monospace", wordBreak: "break-all" } }, createdCredentials.password)
+        )
+      )
+    );
+  }
+
   // ---------- ОСНОВНОЙ SHELL С НАВИГАЦИЕЙ ----------
 
   function TelegramCodePrompt(props) {
@@ -4563,28 +5482,133 @@
       React.createElement("div", { className: "divider" }),
       React.createElement(
         "div",
-        { className: "hint", style: { marginBottom: "16px" } },
-        "Для получения уведомлений о показаниях счётчиков привяжите Telegram аккаунт."
+        { className: "hint", style: { marginBottom: "20px" } },
+        "Чтобы получать уведомления о показаниях счётчиков, привяжите аккаунт Telegram. Следуйте шагам ниже по порядку."
       ),
       React.createElement(
         "div",
-        {
-          className: "alert alert-success",
-          style: { marginBottom: "16px", background: "rgba(59, 130, 246, 0.1)", borderColor: "rgba(59, 130, 246, 0.3)" },
-        },
-        React.createElement("div", { className: "alert-icon" }, "📱"),
+        { style: { display: "flex", flexDirection: "column", gap: "16px", marginBottom: "20px" } },
         React.createElement(
           "div",
-          { className: "alert-body" },
+          {
+            style: {
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: "1px solid rgba(56, 189, 248, 0.35)",
+              background: "rgba(56, 189, 248, 0.08)",
+            },
+          },
           React.createElement(
             "div",
-            { className: "alert-title" },
-            "Как получить код?"
+            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
+            "Шаг 1 из 4"
           ),
           React.createElement(
             "div",
-            { className: "alert-text" },
-            "1. Откройте Telegram\n2. Найдите бота @money_cheking_bot\n3. Напишите команду /start\n4. Скопируйте полученный код"
+            { style: { fontWeight: 600, marginBottom: "8px", color: "var(--text-main)" } },
+            "Откройте бота в Telegram"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontSize: "13px", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.45 } },
+            "Нажмите на ссылку ниже или отсканируйте QR-код камерой телефона."
+          ),
+          React.createElement(
+            "a",
+            {
+              href: "https://t.me/money_cheking_bot",
+              target: "_blank",
+              rel: "noopener noreferrer",
+              style: { color: "var(--accent)", fontWeight: 600, fontSize: "14px", textDecoration: "none", marginBottom: "10px", display: "inline-block" },
+            },
+            "Открыть бота → @money_cheking_bot"
+          ),
+          React.createElement(
+            "a",
+            { href: "https://t.me/money_cheking_bot", target: "_blank", rel: "noopener noreferrer", style: { display: "inline-block", lineHeight: 0 } },
+            React.createElement("img", {
+              src: "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent("https://t.me/money_cheking_bot"),
+              alt: "QR-код бота",
+              style: { width: "180px", height: "180px", display: "block", borderRadius: "8px" },
+            })
+          )
+        ),
+        React.createElement(
+          "div",
+          {
+            style: {
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: "1px solid rgba(148, 163, 184, 0.3)",
+              background: "rgba(15, 23, 42, 0.5)",
+            },
+          },
+          React.createElement(
+            "div",
+            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
+            "Шаг 2 из 4"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
+            "Напишите боту команду /start"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
+            "В открывшемся чате с ботом введите в поле сообщения: /start и отправьте."
+          )
+        ),
+        React.createElement(
+          "div",
+          {
+            style: {
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: "1px solid rgba(148, 163, 184, 0.3)",
+              background: "rgba(15, 23, 42, 0.5)",
+            },
+          },
+          React.createElement(
+            "div",
+            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
+            "Шаг 3 из 4"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
+            "Скопируйте код из ответа бота"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
+            "Бот пришлёт вам сообщение с кодом из 6 цифр (например: 847291). Скопируйте этот код или запомните его."
+          )
+        ),
+        React.createElement(
+          "div",
+          {
+            style: {
+              padding: "14px 16px",
+              borderRadius: "12px",
+              border: "1px solid rgba(74, 222, 128, 0.4)",
+              background: "rgba(74, 222, 128, 0.08)",
+            },
+          },
+          React.createElement(
+            "div",
+            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
+            "Шаг 4 из 4"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
+            "Введите код в поле ниже и нажмите «Привязать Telegram»"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
+            "Вставьте скопированный код в поле «Код из Telegram» на этой странице и нажмите кнопку привязки. После этого привязка завершится."
           )
         )
       ),
@@ -4704,11 +5728,18 @@
       screenContent = React.createElement(StatsScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
+        employee: props.employee,
       });
     } else if (currentScreen === "archive") {
       screenContent = React.createElement(ArchiveScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
+      });
+    } else if (currentScreen === "users") {
+      screenContent = React.createElement(UserManagementScreen, {
+        onNavigate: handleNavigate,
+        onLogout: props.onLogout,
+        session: props.session,
       });
     } else if (currentScreen === "telegram") {
       screenContent = React.createElement(TelegramScreen, {
@@ -5285,6 +6316,7 @@
             })
           : React.createElement(MainShell, {
               employee: employee,
+              session: session,
               onLogout: logout,
             })
       )
