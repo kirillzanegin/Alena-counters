@@ -128,17 +128,48 @@
             return null;
           }
           var emp = result.data;
+          
+          // Автоматическая привязка Telegram ID при входе из Telegram WebApp
           if (emp && autoBindTelegramId && !emp.tg_id) {
-            supabase
+            // Сначала проверяем, не привязан ли уже этот Telegram ID к другому пользователю
+            return supabase
               .from("employees")
-              .update({ tg_id: String(autoBindTelegramId) })
-              .eq("id", emp.id)
-              .then(function (upd) {
-                if (!upd.error) {
-                  emp.tg_id = String(autoBindTelegramId);
+              .select("id, first_name, last_name, email")
+              .eq("tg_id", String(autoBindTelegramId))
+              .eq("is_active", true)
+              .maybeSingle()
+              .then(function (checkResult) {
+                if (checkResult.data) {
+                  // Telegram уже привязан к другому пользователю
+                  var otherUser = checkResult.data;
+                  var otherUserName = otherUser.first_name 
+                    ? (otherUser.first_name + " " + (otherUser.last_name || "")).trim()
+                    : otherUser.email;
+                  
+                  setError(
+                    "⚠️ Этот Telegram аккаунт уже привязан к другому пользователю (" + otherUserName + "). " +
+                    "Сначала отвяжите его в веб-приложении или обратитесь к администратору."
+                  );
+                  return emp; // Возвращаем сотрудника без привязки
                 }
+                
+                // Telegram ID свободен, привязываем
+                return supabase
+                  .from("employees")
+                  .update({ tg_id: String(autoBindTelegramId) })
+                  .eq("id", emp.id)
+                  .then(function (upd) {
+                    if (!upd.error) {
+                      emp.tg_id = String(autoBindTelegramId);
+                      console.log("✅ Telegram ID автоматически привязан:", autoBindTelegramId);
+                    } else {
+                      console.error("❌ Ошибка привязки Telegram:", upd.error);
+                    }
+                    return emp;
+                  });
               });
           }
+          
           return emp;
         });
     }

@@ -147,6 +147,28 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
+      // Проверяем, не используется ли этот Telegram ID уже другим сотрудником
+      const { data: existingTelegramUser } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, email, is_active")
+        .eq("tg_id", String(userId))
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (existingTelegramUser && existingTelegramUser.id !== employee.id) {
+        const existingUserName = existingTelegramUser.first_name 
+          ? `${existingTelegramUser.first_name} ${existingTelegramUser.last_name || ""}`.trim()
+          : existingTelegramUser.email;
+
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ <b>Этот Telegram аккаунт уже используется!</b>\n\n` +
+          `Привязан к пользователю: ${existingUserName}\n\n` +
+          `Сначала отвяжите его в веб-приложении или обратитесь к администратору.`
+        );
+        return new Response("OK", { status: 200 });
+      }
+
       // Привязываем Telegram ID к сотруднику и очищаем токен
       const { error: updateError } = await supabase
         .from("employees")
