@@ -5537,6 +5537,7 @@
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         session: props.session,
+        employee: props.employee,
       });
     } else if (currentScreen === "telegram") {
       screenContent = React.createElement(TelegramScreen, {
