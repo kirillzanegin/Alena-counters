@@ -4744,6 +4744,64 @@
         });
     }
 
+    function handleDeactivateUser() {
+      if (!selectedEmployeeId) {
+        setEditError("Выберите пользователя.");
+        return;
+      }
+      
+      var eid = parseInt(selectedEmployeeId, 10);
+      if (!eid) return;
+      
+      // Нельзя деактивировать самого себя
+      if (eid === props.employee.id) {
+        setEditError("Вы не можете деактивировать свой собственный аккаунт.");
+        return;
+      }
+      
+      if (!confirm("Деактивировать этого пользователя? Он не сможет войти в систему.")) {
+        return;
+      }
+      
+      setEditError(null);
+      setEditSuccess(null);
+      setEditSubmitting(true);
+      
+      supabase
+        .from("employees")
+        .update({ is_active: false })
+        .eq("id", eid)
+        .then(function (result) {
+          setEditSubmitting(false);
+          if (result.error) {
+            console.error(result.error);
+            setEditError("Не удалось деактивировать пользователя: " + result.error.message);
+            return;
+          }
+          
+          setEditSuccess("Пользователь деактивирован.");
+          
+          // Очистить выбор и обновить список
+          setTimeout(function() {
+            setSelectedEmployeeId(null);
+            setEditEmail("");
+            setEditPassword("");
+            setEditFirstName("");
+            setEditLastName("");
+            setEditRole("user");
+            setEditSelectedObjectIds({});
+            
+            // Обновить список сотрудников
+            loadEditEmployees();
+          }, 1500);
+        })
+        .catch(function (err) {
+          console.error(err);
+          setEditSubmitting(false);
+          setEditError("Ошибка деактивации пользователя.");
+        });
+    }
+
     function handleSubmit(e) {
       e.preventDefault();
       setError(null);
@@ -5327,9 +5385,29 @@
               )
             ),
             React.createElement(
-              "button",
-              { className: "button", type: "submit", disabled: editSubmitting },
-              editSubmitting ? "Сохранение..." : "Сохранить параметры"
+              "div",
+              { style: { display: "flex", gap: "12px", marginTop: "16px" } },
+              React.createElement(
+                "button",
+                { className: "button", type: "submit", disabled: editSubmitting, style: { flex: 1 } },
+                editSubmitting ? "Сохранение..." : "Сохранить параметры"
+              ),
+              React.createElement(
+                "button",
+                { 
+                  className: "button button-secondary", 
+                  type: "button", 
+                  onClick: handleDeactivateUser, 
+                  disabled: editSubmitting,
+                  style: { 
+                    flex: 1,
+                    background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.15))",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "#fca5a5"
+                  } 
+                },
+                editSubmitting ? "Деактивация..." : "Деактивировать пользователя"
+              )
             )
           )
         )
