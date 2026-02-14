@@ -114,7 +114,7 @@
       };
     }, []);
 
-    function fetchEmployeeForUser(user) {
+    function fetchEmployeeForUser(user, autoBindTelegramId) {
       if (!supabase || !user) return Promise.resolve(null);
       return supabase
         .from("employees")
@@ -127,7 +127,19 @@
             setError("Не удалось загрузить данные сотрудника.");
             return null;
           }
-          return result.data;
+          var emp = result.data;
+          if (emp && autoBindTelegramId && !emp.tg_id) {
+            supabase
+              .from("employees")
+              .update({ tg_id: String(autoBindTelegramId) })
+              .eq("id", emp.id)
+              .then(function (upd) {
+                if (!upd.error) {
+                  emp.tg_id = String(autoBindTelegramId);
+                }
+              });
+          }
+          return emp;
         });
     }
 
@@ -137,6 +149,11 @@
         return Promise.resolve();
       }
       setError(null);
+
+      var telegramId = null;
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+        telegramId = window.Telegram.WebApp.initDataUnsafe.user.id;
+      }
 
       return supabase.auth
         .signInWithPassword({ email: email, password: password })
@@ -148,7 +165,7 @@
           }
 
           var newSession = result.data.session;
-          return fetchEmployeeForUser(newSession.user).then(function (emp) {
+          return fetchEmployeeForUser(newSession.user, telegramId).then(function (emp) {
             if (emp && emp.is_active) {
               setSession(newSession);
               setEmployee(emp);
@@ -5365,340 +5382,13 @@
 
   // ---------- ОСНОВНОЙ SHELL С НАВИГАЦИЕЙ ----------
 
-  function TelegramCodePrompt(props) {
-    var codeState = useState("");
-    var code = codeState[0];
-    var setCode = codeState[1];
-
-    var loadingState = useState(false);
-    var loading = loadingState[0];
-    var setLoading = loadingState[1];
-
-    var errorState = useState(null);
-    var error = errorState[0];
-    var setError = errorState[1];
-
-    function handleSubmitCode(e) {
-      e.preventDefault();
-      setError(null);
-
-      if (!code.trim() || code.trim().length !== 6) {
-        setError("Код должен содержать 6 цифр");
-        return;
-      }
-
-      setLoading(true);
-
-      supabase
-        .from("telegram_link_tokens")
-        .select("*")
-        .eq("token", code.trim())
-        .eq("used", false)
-        .is("employee_id", null)
-        .not("tg_id", "is", null)
-        .maybeSingle()
-        .then(function (result) {
-          if (result.error || !result.data) {
-            setError("Код не найден или уже использован");
-            setLoading(false);
-            return;
-          }
-
-          var tokenData = result.data;
-          var expiresAt = new Date(tokenData.expires_at);
-          var now = new Date();
-
-          if (now > expiresAt) {
-            setError("Код истёк. Получите новый код в Telegram боте.");
-            setLoading(false);
-            return;
-          }
-
-          supabase
-            .from("employees")
-            .update({ tg_id: tokenData.tg_id })
-            .eq("id", props.employee.id)
-            .then(function (updateResult) {
-              if (updateResult.error) {
-                console.error(updateResult.error);
-                setError("Ошибка при привязке Telegram");
-                setLoading(false);
-                return;
-              }
-
-              supabase
-                .from("telegram_link_tokens")
-                .update({ used: true })
-                .eq("id", tokenData.id)
-                .then(function () {
-                  props.employee.tg_id = tokenData.tg_id;
-                  alert("✅ Telegram успешно привязан!");
-                  props.onComplete();
-                })
-                .catch(function (err) {
-                  console.error(err);
-                  setLoading(false);
-                });
-            })
-            .catch(function (err) {
-              console.error(err);
-              setError("Ошибка при привязке Telegram");
-              setLoading(false);
-            });
-        })
-        .catch(function (err) {
-          console.error(err);
-          setError("Ошибка при проверке кода");
-          setLoading(false);
-        });
-    }
-
-    function handleSkip() {
-      props.onComplete();
-    }
-
-    return React.createElement(
-      "div",
-      { className: "panel", style: { maxWidth: "500px", margin: "0 auto" } },
-      React.createElement(
-        "div",
-        { className: "panel-header" },
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "panel-title" },
-            "Привязка Telegram"
-          ),
-          React.createElement(
-            "div",
-            { className: "panel-subtitle" },
-            "Введите код из Telegram бота"
-          )
-        ),
-        React.createElement("span", { className: "badge" }, "Необязательно")
-      ),
-      React.createElement("div", { className: "divider" }),
-      React.createElement(
-        "div",
-        { className: "hint", style: { marginBottom: "20px" } },
-        "Чтобы получать уведомления о показаниях счётчиков, привяжите аккаунт Telegram. Следуйте шагам ниже по порядку."
-      ),
-      React.createElement(
-        "div",
-        { style: { display: "flex", flexDirection: "column", gap: "16px", marginBottom: "20px" } },
-        React.createElement(
-          "div",
-          {
-            style: {
-              padding: "14px 16px",
-              borderRadius: "12px",
-              border: "1px solid rgba(56, 189, 248, 0.35)",
-              background: "rgba(56, 189, 248, 0.08)",
-            },
-          },
-          React.createElement(
-            "div",
-            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
-            "Шаг 1 из 4"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontWeight: 600, marginBottom: "8px", color: "var(--text-main)" } },
-            "Откройте бота в Telegram"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontSize: "13px", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.45 } },
-            "Нажмите на ссылку ниже или отсканируйте QR-код камерой телефона."
-          ),
-          React.createElement(
-            "a",
-            {
-              href: "https://t.me/money_cheking_bot",
-              target: "_blank",
-              rel: "noopener noreferrer",
-              style: { color: "var(--accent)", fontWeight: 600, fontSize: "14px", textDecoration: "none", marginBottom: "10px", display: "inline-block" },
-            },
-            "Открыть бота → @money_cheking_bot"
-          ),
-          React.createElement(
-            "a",
-            { href: "https://t.me/money_cheking_bot", target: "_blank", rel: "noopener noreferrer", style: { display: "inline-block", lineHeight: 0 } },
-            React.createElement("img", {
-              src: "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent("https://t.me/money_cheking_bot"),
-              alt: "QR-код бота",
-              style: { width: "180px", height: "180px", display: "block", borderRadius: "8px" },
-            })
-          )
-        ),
-        React.createElement(
-          "div",
-          {
-            style: {
-              padding: "14px 16px",
-              borderRadius: "12px",
-              border: "1px solid rgba(148, 163, 184, 0.3)",
-              background: "rgba(15, 23, 42, 0.5)",
-            },
-          },
-          React.createElement(
-            "div",
-            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
-            "Шаг 2 из 4"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
-            "Напишите боту команду /start"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
-            "В открывшемся чате с ботом введите в поле сообщения: /start и отправьте."
-          )
-        ),
-        React.createElement(
-          "div",
-          {
-            style: {
-              padding: "14px 16px",
-              borderRadius: "12px",
-              border: "1px solid rgba(148, 163, 184, 0.3)",
-              background: "rgba(15, 23, 42, 0.5)",
-            },
-          },
-          React.createElement(
-            "div",
-            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
-            "Шаг 3 из 4"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
-            "Скопируйте код из ответа бота"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
-            "Бот пришлёт вам сообщение с кодом из 6 цифр (например: 847291). Скопируйте этот код или запомните его."
-          )
-        ),
-        React.createElement(
-          "div",
-          {
-            style: {
-              padding: "14px 16px",
-              borderRadius: "12px",
-              border: "1px solid rgba(74, 222, 128, 0.4)",
-              background: "rgba(74, 222, 128, 0.08)",
-            },
-          },
-          React.createElement(
-            "div",
-            { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.08em" } },
-            "Шаг 4 из 4"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontWeight: 600, marginBottom: "6px", color: "var(--text-main)" } },
-            "Введите код в поле ниже и нажмите «Привязать Telegram»"
-          ),
-          React.createElement(
-            "div",
-            { style: { fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.45 } },
-            "Вставьте скопированный код в поле «Код из Telegram» на этой странице и нажмите кнопку привязки. После этого привязка завершится."
-          )
-        )
-      ),
-      React.createElement(
-        "form",
-        { className: "form", onSubmit: handleSubmitCode },
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "field-label" },
-            "Код из Telegram (6 цифр)"
-          ),
-          React.createElement("input", {
-            className: "input",
-            type: "text",
-            placeholder: "123456",
-            value: code,
-            onChange: function (e) {
-              setCode(e.target.value.replace(/[^0-9]/g, "").substring(0, 6));
-            },
-            disabled: loading,
-            maxLength: 6,
-            autoFocus: true,
-            style: { fontSize: "18px", letterSpacing: "4px", textAlign: "center" },
-          })
-        ),
-        React.createElement(
-          "div",
-          { style: { display: "flex", gap: "8px", marginTop: "16px" } },
-          React.createElement(
-            "button",
-            {
-              className: "button",
-              type: "submit",
-              disabled: loading || code.length !== 6,
-              style: { flex: 1 },
-            },
-            loading ? "Привязка..." : "Привязать Telegram"
-          ),
-          React.createElement(
-            "button",
-            {
-              className: "button button-secondary",
-              type: "button",
-              onClick: handleSkip,
-              disabled: loading,
-            },
-            "Пропустить"
-          )
-        )
-      ),
-      error &&
-        React.createElement(
-          "div",
-          { className: "alert alert-error", style: { marginTop: "16px" } },
-          React.createElement("div", { className: "alert-icon" }, "!"),
-          React.createElement(
-            "div",
-            { className: "alert-body" },
-            React.createElement("div", { className: "alert-title" }, "Ошибка"),
-            React.createElement("div", { className: "alert-text" }, error)
-          )
-        )
-    );
-  }
-
   function MainShell(props) {
     var currentScreenState = useState("menu");
     var currentScreen = currentScreenState[0];
     var setCurrentScreen = currentScreenState[1];
 
-    var showCodePromptState = useState(!props.employee.tg_id);
-    var showCodePrompt = showCodePromptState[0];
-    var setShowCodePrompt = showCodePromptState[1];
-
     function handleNavigate(screen) {
       setCurrentScreen(screen);
-    }
-
-    function handleCodeComplete() {
-      setShowCodePrompt(false);
-    }
-
-    if (showCodePrompt) {
-      return React.createElement(TelegramCodePrompt, {
-        employee: props.employee,
-        onComplete: handleCodeComplete,
-      });
     }
 
     var screenContent;
@@ -5889,7 +5579,27 @@
 
     useEffect(function () {
       setTgLinked(!!props.employee.tg_id);
-    }, [props.employee.tg_id]);
+      setCheckingStatus(true);
+      supabase
+        .from("employees")
+        .select("tg_id")
+        .eq("id", props.employee.id)
+        .single()
+        .then(function (result) {
+          setCheckingStatus(false);
+          if (result.data && result.data.tg_id) {
+            props.employee.tg_id = result.data.tg_id;
+            setTgLinked(true);
+          } else {
+            setTgLinked(false);
+          }
+        })
+        .catch(function (err) {
+          console.error("Error refreshing tg_id:", err);
+          setCheckingStatus(false);
+          setTgLinked(!!props.employee.tg_id);
+        });
+    }, []);
 
     useEffect(function () {
       return function () {
@@ -5951,15 +5661,12 @@
       expiresAt.setHours(expiresAt.getHours() + 1);
 
       supabase
-        .from("telegram_link_tokens")
-        .insert([
-          {
-            employee_id: props.employee.id,
-            token: token,
-            expires_at: expiresAt.toISOString(),
-            used: false,
-          },
-        ])
+        .from("employees")
+        .update({
+          link_token: token,
+          link_expires_at: expiresAt.toISOString(),
+        })
+        .eq("id", props.employee.id)
         .then(function (result) {
           if (result.error) {
             console.error(result.error);
@@ -5990,7 +5697,7 @@
 
       supabase
         .from("employees")
-        .update({ tg_id: null })
+        .update({ tg_id: null, link_token: null, link_expires_at: null })
         .eq("id", props.employee.id)
         .then(function (result) {
           if (result.error) {
