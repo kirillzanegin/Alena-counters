@@ -84,6 +84,8 @@ serve(async (req: Request) => {
     if (text.startsWith("/start ")) {
       const token = text.substring(7).trim();
       
+      console.log("🔍 Received token:", token);
+      
       if (!token) {
         await sendTelegramMessage(
           chatId,
@@ -92,37 +94,52 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Ищем токен в базе
-      const { data: tokenData, error: tokenError } = await supabase
-        .from("telegram_link_tokens")
-        .select("*, employees(*)")
-        .eq("token", token)
-        .eq("used", false)
-        .single();
+      // Ищем токен в employees
+      const { data: employee, error: tokenError } = await supabase
+        .from("employees")
+        .select("*")
+        .eq("link_token", token)
+        .eq("is_active", true)
+        .maybeSingle();
 
-      if (tokenError || !tokenData) {
-        console.error("Token not found:", tokenError);
+      console.log("🔍 Database search result:", { employee, tokenError });
+
+      if (tokenError || !employee) {
+        console.error("❌ Token not found or error:", tokenError);
+        
+        // Проверим, есть ли вообще токены в базе
+        const { data: allEmployeesWithTokens } = await supabase
+          .from("employees")
+          .select("id, email, link_token, link_expires_at")
+          .not("link_token", "is", null);
+        
+        console.log("📋 All employees with tokens:", allEmployeesWithTokens);
+        
         await sendTelegramMessage(
           chatId,
-          "❌ Токен не найден или уже использован.\n\nПолучите новый токен в веб-приложении."
+          "❌ Токен не найден или недействителен.\n\n" +
+          `Полученный токен: <code>${token}</code>\n\n` +
+          "Получите новый токен в веб-приложении."
         );
         return new Response("OK", { status: 200 });
       }
 
       // Проверяем срок действия токена
-      const expiresAt = new Date(tokenData.expires_at);
-      const now = new Date();
-      
-      if (now > expiresAt) {
-        await sendTelegramMessage(
-          chatId,
-          "⏰ Токен истёк.\n\nПолучите новый токен в веб-приложении."
-        );
-        return new Response("OK", { status: 200 });
+      if (employee.link_expires_at) {
+        const expiresAt = new Date(employee.link_expires_at);
+        const now = new Date();
+        
+        if (now > expiresAt) {
+          await sendTelegramMessage(
+            chatId,
+            "⏰ Токен истёк.\n\nПолучите новый токен в веб-приложении."
+          );
+          return new Response("OK", { status: 200 });
+        }
       }
 
       // Проверяем, не привязан ли уже другой Telegram к этому сотруднику
-      if (tokenData.employees.tg_id && tokenData.employees.tg_id !== String(userId)) {
+      if (employee.tg_id && employee.tg_id !== String(userId)) {
         await sendTelegramMessage(
           chatId,
           "⚠️ К этому аккаунту уже привязан другой Telegram.\n\nСначала отвяжите старый аккаунт в веб-приложении."
@@ -130,11 +147,11 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Привязываем Telegram ID к сотруднику
+      // Привязываем Telegram ID к сотруднику и очищаем токен
       const { error: updateError } = await supabase
         .from("employees")
-        .update({ tg_id: String(userId) })
-        .eq("id", tokenData.employee_id);
+        .update({ tg_id: String(userId), link_token: null, link_expires_at: null })
+        .eq("id", employee.id);
 
       if (updateError) {
         console.error("Failed to update employee:", updateError);
@@ -145,53 +162,35 @@ serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // Отмечаем токен как использованный
-      await supabase
-        .from("telegram_link_tokens")
-        .update({ used: true })
-        .eq("id", tokenData.id);
-
       // Отправляем успешное сообщение
-      const employeeName = tokenData.employees.first_name 
-        ? `${tokenData.employees.first_name} ${tokenData.employees.last_name || ""}`.trim()
-        : tokenData.employees.email;
+      const employeeName = employee.first_name 
+        ? `${employee.first_name} ${employee.last_name || ""}`.trim()
+        : employee.email;
 
       await sendTelegramMessage(
         chatId,
         `✅ <b>Аккаунт успешно привязан!</b>\n\n` +
         `Сотрудник: ${employeeName}\n` +
-        `Email: ${tokenData.employees.email}\n\n` +
+        `Email: ${employee.email}\n\n` +
         `Теперь вы будете получать уведомления от системы Энергомониторинг.`
       );
 
       return new Response("OK", { status: 200 });
     }
 
-    // Обработка команды /start без токена (основной вход из Telegram / mini app)
+    // Обработка команды /start без токена
     if (text === "/start") {
       if (!chatId) {
         return new Response("OK", { status: 200 });
       }
-
-      const webAppButton =
-        WEBAPP_URL &&
-        ({
-          inline_keyboard: [
-            [
-              {
-                text: "Открыть приложение",
-                web_app: { url: WEBAPP_URL },
-              },
-            ],
-          ],
-        } as TelegramReplyMarkup);
 
       // Проверяем, не привязан ли уже этот Telegram ID
       const { data: existingEmployee } = await supabase
         .from("employees")
         .select("*")
         .eq("tg_id", String(userId))
-        .single();
+        .eq("is_active", true)
+        .maybeSingle();
 
       if (existingEmployee) {
         const name = existingEmployee.first_name 
@@ -200,56 +199,24 @@ serve(async (req: Request) => {
 
         await sendTelegramMessage(
           chatId,
-          `✅ <b>Аккаунт уже привязан!</b>\n\n` +
+          `✅ <b>Ваш аккаунт уже привязан!</b>\n\n` +
           `Сотрудник: ${name}\n` +
           `Email: ${existingEmployee.email}\n\n` +
-          `Нажмите кнопку ниже, чтобы открыть приложение.`,
-          webAppButton || undefined
+          `Откройте приложение из меню бота, чтобы начать работу.`
         );
-        return new Response("OK", { status: 200 });
-      }
-
-      // Генерируем 6-значный код
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      
-      // Срок действия - 1 час
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 1);
-
-      // Сохраняем код в базе (employee_id = NULL, tg_id = userId)
-      const { error: insertError } = await supabase
-        .from("telegram_link_tokens")
-        .insert([
-          {
-            employee_id: null,
-            tg_id: String(userId),
-            token: code,
-            expires_at: expiresAt.toISOString(),
-            used: false,
-          },
-        ]);
-
-      if (insertError) {
-        console.error("Failed to create code:", insertError);
+      } else {
         await sendTelegramMessage(
           chatId,
-          "❌ Ошибка при генерации кода.\n\nПопробуйте позже или используйте привязку через веб-приложение."
+          `👋 Привет! Это бот системы <b>Энергомониторинг</b>.\n\n` +
+          `Для привязки аккаунта:\n` +
+          `1. Откройте веб-приложение\n` +
+          `2. Войдите с вашим email и паролем\n` +
+          `3. Перейдите в раздел «Telegram»\n` +
+          `4. Нажмите «Привязать Telegram» и перейдите по ссылке\n\n` +
+          `Или откройте приложение из Telegram, войдите — привязка произойдёт автоматически.`
         );
-        return new Response("OK", { status: 200 });
       }
 
-      // Отправляем код + кнопку открытия мини‑приложения (если WEBAPP_URL задан)
-      const messageText =
-        `👋 Привет! Это бот системы <b>Энергомониторинг</b>.\n\n` +
-        `🔑 <b>Ваш код для привязки:</b>\n\n` +
-        `<code>${code}</code>\n\n` +
-        `<b>Как привязать аккаунт:</b>\n` +
-        `1. Нажмите кнопку «Открыть приложение» ниже\n` +
-        `2. Войдите с вашим email и паролем (если потребуется)\n` +
-        `3. Введите этот код на экране привязки\n\n` +
-        `⏰ Код действителен <b>1 час</b>`;
-
-      await sendTelegramMessage(chatId, messageText, webAppButton || undefined);
       return new Response("OK", { status: 200 });
     }
 

@@ -5660,6 +5660,10 @@
       var expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 1);
 
+      console.log("🔑 Generating token:", token);
+      console.log("⏰ Expires at:", expiresAt.toISOString());
+      console.log("👤 Employee ID:", props.employee.id);
+
       supabase
         .from("employees")
         .update({
@@ -5668,19 +5672,22 @@
         })
         .eq("id", props.employee.id)
         .then(function (result) {
+          console.log("📝 Update result:", result);
+          
           if (result.error) {
-            console.error(result.error);
+            console.error("❌ Error updating employee:", result.error);
             setError("Не удалось создать токен привязки: " + result.error.message);
             setLoading(false);
             return;
           }
 
+          console.log("✅ Token saved successfully:", token);
           setLinkToken(token);
           setLoading(false);
           startCheckingStatus();
         })
         .catch(function (err) {
-          console.error(err);
+          console.error("❌ Catch error:", err);
           setError("Ошибка при генерации токена");
           setLoading(false);
         });
