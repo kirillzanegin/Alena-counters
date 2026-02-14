@@ -4781,7 +4781,7 @@
           
           setEditSuccess("Пользователь деактивирован.");
           
-          // Очистить выбор и обновить список
+          // Очистить выбор через 1.5 секунды
           setTimeout(function() {
             setSelectedEmployeeId(null);
             setEditEmail("");
@@ -4790,9 +4790,7 @@
             setEditLastName("");
             setEditRole("user");
             setEditSelectedObjectIds({});
-            
-            // Обновить список сотрудников
-            loadEditEmployees();
+            setEditSuccess(null);
           }, 1500);
         })
         .catch(function (err) {
