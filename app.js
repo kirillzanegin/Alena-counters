@@ -14,6 +14,21 @@
       ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
       : null;
 
+  // Нормализация и валидация телефона: +7 и 10 цифр, без пробелов и символов.
+  // Пустое поле — допустимо (необязательное). Возвращает { valid, normalized }.
+  function normalizePhoneForRussia(raw) {
+    var s = (raw || "").trim();
+    if (!s) return { valid: true, normalized: null };
+    var digits = s.replace(/\D/g, "");
+    if (digits.length === 11 && (digits[0] === "8" || digits[0] === "7")) {
+      return { valid: true, normalized: "+7" + digits.slice(1) };
+    }
+    if (digits.length === 10 && digits[0] !== "0") {
+      return { valid: true, normalized: "+7" + digits };
+    }
+    return { valid: false, normalized: null };
+  }
+
   // ---------- ХУК АВТОРИЗАЦИИ ----------
 
   function useAuth() {
@@ -1161,6 +1176,10 @@
     var assignedEmployeeId = assignedEmployeeIdState[0];
     var setAssignedEmployeeId = assignedEmployeeIdState[1];
 
+    var ownerIdState = useState("");
+    var ownerId = ownerIdState[0];
+    var setOwnerId = ownerIdState[1];
+
     var userListState = useState([]);
     var userList = userListState[0];
     var setUserList = userListState[1];
@@ -1228,6 +1247,7 @@
         comments: comments.trim() || null,
         is_active: true,
         assigned_employee_id: assignedEmployeeId ? parseInt(assignedEmployeeId, 10) : null,
+        owner_id: ownerId && ownerId.trim() ? ownerId.trim() : null,
       };
 
       supabase
@@ -1280,6 +1300,7 @@
               setContacts("");
               setComments("");
               setAssignedEmployeeId("");
+              setOwnerId("");
               setSelectedCounters(
                 (props.counterTypes || []).reduce(function (acc, type) {
                   acc[type] = false;
@@ -1435,6 +1456,34 @@
             },
             disabled: submitting,
           })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement(
+            "div",
+            { className: "field-label" },
+            "Владелец (принадлежность объекта)"
+          ),
+          React.createElement(
+            "select",
+            {
+              className: "input",
+              value: ownerId,
+              onChange: function (e) {
+                setOwnerId(e.target.value);
+              },
+              disabled: submitting,
+            },
+            React.createElement("option", { value: "" }, "— Не выбрано —"),
+            (props.owners || []).map(function (o) {
+              return React.createElement(
+                "option",
+                { key: o.id, value: o.id },
+                o.name
+              );
+            })
+          )
         ),
         React.createElement(
           "div",
@@ -2360,6 +2409,10 @@
     var assignedEmployeeId = assignedEmployeeIdState[0];
     var setAssignedEmployeeId = assignedEmployeeIdState[1];
 
+    var ownerIdState = useState("");
+    var ownerId = ownerIdState[0];
+    var setOwnerId = ownerIdState[1];
+
     var userListState = useState([]);
     var userList = userListState[0];
     var setUserList = userListState[1];
@@ -2475,6 +2528,7 @@
       setContacts(obj.contacts || "");
       setComments(obj.comments || "");
       setAssignedEmployeeId(obj.assigned_employee_id ? String(obj.assigned_employee_id) : "");
+      setOwnerId(obj.owner_id ? String(obj.owner_id) : "");
       setEditedReadings({});
       setEditedDates({});
       setSelectedMonth("");
@@ -2538,6 +2592,7 @@
         contacts: contacts.trim() || null,
         comments: comments.trim() || null,
         assigned_employee_id: assignedEmployeeId ? parseInt(assignedEmployeeId, 10) : null,
+        owner_id: ownerId && ownerId.trim() ? ownerId.trim() : null,
       };
 
       supabase
@@ -3183,6 +3238,34 @@
               },
               disabled: submitting,
             })
+          ),
+          React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { className: "field-label" },
+              "Владелец (принадлежность объекта)"
+            ),
+            React.createElement(
+              "select",
+              {
+                className: "input",
+                value: ownerId,
+                onChange: function (e) {
+                  setOwnerId(e.target.value);
+                },
+                disabled: submitting,
+              },
+              React.createElement("option", { value: "" }, "— Не выбрано —"),
+              (props.owners || []).map(function (o) {
+                return React.createElement(
+                  "option",
+                  { key: o.id, value: o.id },
+                  o.name
+                );
+              })
+            )
           ),
           React.createElement(
             "div",
@@ -4185,6 +4268,11 @@
     var passwordState = useState("");
     var firstNameState = useState("");
     var lastNameState = useState("");
+    var maxIdState = useState("");
+    var phoneState = useState("");
+    var notifyViaEmailState = useState(false);
+    var notifyViaTelegramState = useState(false);
+    var notifyViaMaxState = useState(false);
     var roleState = useState("user");
     var submittingState = useState(false);
     var errorState = useState(null);
@@ -4200,6 +4288,16 @@
     var setFirstName = firstNameState[1];
     var lastName = lastNameState[0];
     var setLastName = lastNameState[1];
+    var maxId = maxIdState[0];
+    var setMaxId = maxIdState[1];
+    var phone = phoneState[0];
+    var setPhone = phoneState[1];
+    var notifyViaEmail = notifyViaEmailState[0];
+    var setNotifyViaEmail = notifyViaEmailState[1];
+    var notifyViaTelegram = notifyViaTelegramState[0];
+    var setNotifyViaTelegram = notifyViaTelegramState[1];
+    var notifyViaMax = notifyViaMaxState[0];
+    var setNotifyViaMax = notifyViaMaxState[1];
     var role = roleState[0];
     var setRole = roleState[1];
     var submitting = submittingState[0];
@@ -4224,6 +4322,11 @@
     var editPasswordState = useState("");
     var editFirstNameState = useState("");
     var editLastNameState = useState("");
+    var editMaxIdState = useState("");
+    var editPhoneState = useState("");
+    var editNotifyViaEmailState = useState(false);
+    var editNotifyViaTelegramState = useState(false);
+    var editNotifyViaMaxState = useState(false);
     var editRoleState = useState("user");
     var editObjectsState = useState([]);
     var editSelectedObjectIdsState = useState({});
@@ -4245,6 +4348,16 @@
     var setEditFirstName = editFirstNameState[1];
     var editLastName = editLastNameState[0];
     var setEditLastName = editLastNameState[1];
+    var editMaxId = editMaxIdState[0];
+    var setEditMaxId = editMaxIdState[1];
+    var editPhone = editPhoneState[0];
+    var setEditPhone = editPhoneState[1];
+    var editNotifyViaEmail = editNotifyViaEmailState[0];
+    var setEditNotifyViaEmail = editNotifyViaEmailState[1];
+    var editNotifyViaTelegram = editNotifyViaTelegramState[0];
+    var setEditNotifyViaTelegram = editNotifyViaTelegramState[1];
+    var editNotifyViaMax = editNotifyViaMaxState[0];
+    var setEditNotifyViaMax = editNotifyViaMaxState[1];
     var editRole = editRoleState[0];
     var setEditRole = editRoleState[1];
     var editObjects = editObjectsState[0];
@@ -4275,7 +4388,7 @@
       if (viewMode !== "edit") return;
       supabase
         .from("employees")
-        .select("id, email, first_name, last_name, role")
+        .select("id, email, first_name, last_name, role, max_id, phone, notify_via_email, notify_via_telegram, notify_via_max")
         .eq("is_active", true)
         .order("first_name")
         .then(function (res) {
@@ -4293,7 +4406,7 @@
       if (!eid) return;
       supabase
         .from("employees")
-        .select("id, email, first_name, last_name, role")
+        .select("id, email, first_name, last_name, role, max_id, phone, notify_via_email, notify_via_telegram, notify_via_max")
         .eq("id", eid)
         .eq("is_active", true)
         .single()
@@ -4303,6 +4416,11 @@
             setEditEmail(emp.email || "");
             setEditFirstName(emp.first_name || "");
             setEditLastName(emp.last_name || "");
+            setEditMaxId(emp.max_id || "");
+            setEditPhone(emp.phone || "");
+            setEditNotifyViaEmail(!!emp.notify_via_email);
+            setEditNotifyViaTelegram(!!emp.notify_via_telegram);
+            setEditNotifyViaMax(!!emp.notify_via_max);
             setEditRole(emp.role || "user");
             setEditPassword("");
           }
@@ -4380,6 +4498,11 @@
         setEditError("Пароль не менее 6 символов.");
         return;
       }
+      var phoneResult = normalizePhoneForRussia(editPhone);
+      if (!phoneResult.valid) {
+        setEditError("Телефон: укажите +7 и 10 цифр (без пробелов и символов).");
+        return;
+      }
       var token = props.session && props.session.access_token;
       if (!token) {
         setEditError("Нет сессии. Войдите заново.");
@@ -4394,6 +4517,11 @@
         last_name: editLastName.trim() || undefined,
         role: editRole,
         object_ids: objectIds,
+        max_id: editMaxId.trim() ? editMaxId.trim() : null,
+        phone: phoneResult.normalized,
+        notify_via_email: editNotifyViaEmail,
+        notify_via_telegram: editNotifyViaTelegram,
+        notify_via_max: editNotifyViaMax,
       };
       if (editPassword.length >= 6) body.password = editPassword;
       fetch(SUPABASE_URL + "/functions/v1/admin-update-user", {
@@ -4462,6 +4590,11 @@
             setEditPassword("");
             setEditFirstName("");
             setEditLastName("");
+            setEditMaxId("");
+            setEditPhone("");
+            setEditNotifyViaEmail(false);
+            setEditNotifyViaTelegram(false);
+            setEditNotifyViaMax(false);
             setEditRole("user");
             setEditSelectedObjectIds({});
             setEditSuccess(null);
@@ -4487,6 +4620,11 @@
         setError("Пароль не менее 6 символов.");
         return;
       }
+      var phoneResult = normalizePhoneForRussia(phone);
+      if (!phoneResult.valid) {
+        setError("Телефон: укажите +7 и 10 цифр (без пробелов и символов).");
+        return;
+      }
       var token = props.session && props.session.access_token;
       if (!token) {
         setError("Нет сессии. Войдите заново.");
@@ -4504,6 +4642,11 @@
           last_name: lastName.trim() || undefined,
           role: role,
           object_ids: objectIds.length ? objectIds : undefined,
+          max_id: maxId.trim() ? maxId.trim() : undefined,
+          phone: phoneResult.normalized || undefined,
+          notify_via_email: notifyViaEmail,
+          notify_via_telegram: notifyViaTelegram,
+          notify_via_max: notifyViaMax,
         }),
       })
         .then(function (res) { return res.json().then(function (data) { return { status: res.status, data: data }; }); })
@@ -4518,6 +4661,11 @@
             setPassword("");
             setFirstName("");
             setLastName("");
+            setMaxId("");
+            setPhone("");
+            setNotifyViaEmail(false);
+            setNotifyViaTelegram(false);
+            setNotifyViaMax(false);
             setRole("user");
             setSelectedObjectIds({});
           } else {
@@ -4635,6 +4783,64 @@
             disabled: submitting,
             placeholder: "Фамилия",
           })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Max ID"),
+          React.createElement("input", {
+            className: "input",
+            type: "text",
+            value: maxId,
+            onChange: function (e) { setMaxId(e.target.value); },
+            disabled: submitting,
+            placeholder: "Необязательно",
+          })
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "field-label" }, "Телефон"),
+          React.createElement("input", {
+            className: "input",
+            type: "tel",
+            value: phone,
+            onChange: function (e) { setPhone(e.target.value); },
+            disabled: submitting,
+            placeholder: "+7 и 10 цифр, например +79991234567",
+          }),
+          React.createElement("div", { className: "hint", style: { marginTop: "4px" } }, "Только +7 и цифры, без пробелов и символов. Сохраняется в формате +79991234567.")
+        ),
+        React.createElement("div", { className: "divider" }),
+        React.createElement("div", { className: "field-label" }, "Получать объявления по контактам"),
+        React.createElement("div", { className: "hint", style: { marginBottom: "8px" } }, "Отметьте каналы для объявлений. При включении отображается индикатор."),
+        React.createElement(
+          "div",
+          { style: { display: "flex", flexDirection: "column", gap: "10px" } },
+          React.createElement(
+            "label",
+            { style: { display: "flex", alignItems: "center", gap: "10px", cursor: submitting ? "default" : "pointer", flexWrap: "wrap" } },
+            React.createElement("input", { type: "checkbox", checked: notifyViaEmail, onChange: function () { if (!submitting) setNotifyViaEmail(!notifyViaEmail); }, disabled: submitting }),
+            React.createElement("span", { style: { flex: 1 } }, "По Email"),
+            React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, email || "—"),
+            notifyViaEmail && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+          ),
+          React.createElement(
+            "label",
+            { style: { display: "flex", alignItems: "center", gap: "10px", cursor: submitting ? "default" : "pointer", flexWrap: "wrap" } },
+            React.createElement("input", { type: "checkbox", checked: notifyViaTelegram, onChange: function () { if (!submitting) setNotifyViaTelegram(!notifyViaTelegram); }, disabled: submitting }),
+            React.createElement("span", { style: { flex: 1 } }, "По Telegram"),
+            React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, "привязывается в боте"),
+            notifyViaTelegram && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+          ),
+          React.createElement(
+            "label",
+            { style: { display: "flex", alignItems: "center", gap: "10px", cursor: submitting ? "default" : "pointer", flexWrap: "wrap" } },
+            React.createElement("input", { type: "checkbox", checked: notifyViaMax, onChange: function () { if (!submitting) setNotifyViaMax(!notifyViaMax); }, disabled: submitting }),
+            React.createElement("span", { style: { flex: 1 } }, "По Max ID"),
+            React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, maxId || "—"),
+            notifyViaMax && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+          )
         ),
         React.createElement(
           "div",
@@ -4938,6 +5144,64 @@
             React.createElement(
               "div",
               null,
+              React.createElement("div", { className: "field-label" }, "Max ID"),
+              React.createElement("input", {
+                className: "input",
+                type: "text",
+                value: editMaxId,
+                onChange: function (e) { setEditMaxId(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "Необязательно",
+              })
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("div", { className: "field-label" }, "Телефон"),
+              React.createElement("input", {
+                className: "input",
+                type: "tel",
+                value: editPhone,
+                onChange: function (e) { setEditPhone(e.target.value); },
+                disabled: editSubmitting,
+                placeholder: "+7 и 10 цифр, например +79991234567",
+              }),
+              React.createElement("div", { className: "hint", style: { marginTop: "4px" } }, "Только +7 и цифры. Сохраняется в формате +79991234567.")
+            ),
+            React.createElement("div", { className: "divider" }),
+            React.createElement("div", { className: "field-label" }, "Получать объявления по контактам"),
+            React.createElement("div", { className: "hint", style: { marginBottom: "8px" } }, "Отметьте каналы для объявлений. При включении отображается индикатор."),
+            React.createElement(
+              "div",
+              { style: { display: "flex", flexDirection: "column", gap: "10px" } },
+              React.createElement(
+                "label",
+                { style: { display: "flex", alignItems: "center", gap: "10px", cursor: editSubmitting ? "default" : "pointer", flexWrap: "wrap" } },
+                React.createElement("input", { type: "checkbox", checked: editNotifyViaEmail, onChange: function () { if (!editSubmitting) setEditNotifyViaEmail(!editNotifyViaEmail); }, disabled: editSubmitting }),
+                React.createElement("span", { style: { flex: 1 } }, "По Email"),
+                React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, editEmail || "—"),
+                editNotifyViaEmail && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+              ),
+              React.createElement(
+                "label",
+                { style: { display: "flex", alignItems: "center", gap: "10px", cursor: editSubmitting ? "default" : "pointer", flexWrap: "wrap" } },
+                React.createElement("input", { type: "checkbox", checked: editNotifyViaTelegram, onChange: function () { if (!editSubmitting) setEditNotifyViaTelegram(!editNotifyViaTelegram); }, disabled: editSubmitting }),
+                React.createElement("span", { style: { flex: 1 } }, "По Telegram"),
+                React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, "привязывается в боте"),
+                editNotifyViaTelegram && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+              ),
+              React.createElement(
+                "label",
+                { style: { display: "flex", alignItems: "center", gap: "10px", cursor: editSubmitting ? "default" : "pointer", flexWrap: "wrap" } },
+                React.createElement("input", { type: "checkbox", checked: editNotifyViaMax, onChange: function () { if (!editSubmitting) setEditNotifyViaMax(!editNotifyViaMax); }, disabled: editSubmitting }),
+                React.createElement("span", { style: { flex: 1 } }, "По Max ID"),
+                React.createElement("span", { style: { fontSize: "11px", color: "var(--text-muted)" } }, editMaxId || "—"),
+                editNotifyViaMax && React.createElement("span", { style: { padding: "2px 8px", borderRadius: "999px", background: "rgba(56, 189, 248, 0.2)", fontSize: "11px", fontWeight: 600 } }, "Вкл")
+              )
+            ),
+            React.createElement(
+              "div",
+              null,
               React.createElement("div", { className: "field-label", style: { marginBottom: "8px" } }, "Роль"),
               React.createElement(
                 "div",
@@ -5172,7 +5436,11 @@
     var counterTypes = counterTypesState[0];
     var setCounterTypes = counterTypesState[1];
 
-    // Load counter types from database on mount
+    var ownersState = useState([]);
+    var owners = ownersState[0];
+    var setOwners = ownersState[1];
+
+    // Load counter types and owners from database on mount
     useEffect(function () {
       if (!supabase) return;
       
@@ -5188,6 +5456,20 @@
         })
         .catch(function (err) {
           console.error("Failed to load counter types:", err);
+        });
+
+      supabase
+        .from("owners")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (!res.error && res.data) {
+            setOwners(res.data);
+          }
+        })
+        .catch(function (err) {
+          console.error("Failed to load owners:", err);
         });
     }, []);
 
@@ -5213,12 +5495,14 @@
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         counterTypes: counterTypes,
+        owners: owners,
       });
     } else if (currentScreen === "edit-object") {
       screenContent = React.createElement(EditObjectScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         counterTypes: counterTypes,
+        owners: owners,
       });
     } else if (currentScreen === "stats") {
       screenContent = React.createElement(StatsScreen, {

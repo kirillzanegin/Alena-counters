@@ -10,6 +10,18 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+/** Normalize Russian phone to +7 and 10 digits, no spaces. Returns null if invalid. */
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && (digits[0] === "8" || digits[0] === "7")) {
+    return "+7" + digits.slice(1);
+  }
+  if (digits.length === 10 && digits[0] !== "0") {
+    return "+7" + digits;
+  }
+  return null;
+}
+
 interface UpdateUserBody {
   employee_id: number;
   email?: string;
@@ -18,6 +30,11 @@ interface UpdateUserBody {
   last_name?: string;
   role?: "owner" | "user";
   object_ids?: number[];
+  max_id?: string;
+  phone?: string;
+  notify_via_email?: boolean;
+  notify_via_telegram?: boolean;
+  notify_via_max?: boolean;
 }
 
 serve(async (req: Request) => {
@@ -93,7 +110,7 @@ serve(async (req: Request) => {
 
   const { data: employee, error: fetchErr } = await supabaseAdmin
     .from("employees")
-    .select("id, auth_user_id, email, first_name, last_name, role")
+    .select("id, auth_user_id, email, first_name, last_name, role, max_id, phone")
     .eq("id", employee_id)
     .eq("is_active", true)
     .maybeSingle();
@@ -113,6 +130,15 @@ serve(async (req: Request) => {
   const object_ids = Array.isArray(body.object_ids)
     ? body.object_ids.filter((id: unknown) => typeof id === "number")
     : null;
+  const max_id = body.hasOwnProperty("max_id")
+    ? (typeof body.max_id === "string" ? (body.max_id.trim() || null) : null)
+    : undefined;
+  const phoneRaw = body.hasOwnProperty("phone")
+    ? (typeof body.phone === "string" ? body.phone.trim() : null)
+    : undefined;
+  const phone = phoneRaw !== undefined
+    ? (phoneRaw ? normalizePhone(phoneRaw) : null)
+    : undefined;
 
   if (email !== null && !email) {
     return new Response(JSON.stringify({ error: "Email не может быть пустым" }), {
@@ -161,6 +187,11 @@ serve(async (req: Request) => {
   if (first_name !== null) employeeUpdate.first_name = first_name;
   if (last_name !== null) employeeUpdate.last_name = last_name;
   if (role !== null) employeeUpdate.role = role;
+  if (max_id !== undefined) employeeUpdate.max_id = max_id;
+  if (phone !== undefined) employeeUpdate.phone = phone;
+  if (body.notify_via_email !== undefined) employeeUpdate.notify_via_email = body.notify_via_email === true;
+  if (body.notify_via_telegram !== undefined) employeeUpdate.notify_via_telegram = body.notify_via_telegram === true;
+  if (body.notify_via_max !== undefined) employeeUpdate.notify_via_max = body.notify_via_max === true;
 
   if (Object.keys(employeeUpdate).length > 0) {
     const { error: updateEmpErr } = await supabaseAdmin
