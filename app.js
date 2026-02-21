@@ -1126,26 +1126,20 @@
     var comments = commentsState[0];
     var setComments = commentsState[1];
 
-    var selectedCountersState = useState({
-      "ХВС 1": false,
-      "ГВС 1": false,
-      "ХВС 2": false,
-      "ГВС 2": false,
-      "ХВС 3": false,
-      "ГВС 3": false,
-      "Т1 день": false,
-      "Т1 ночь": false,
-      "Т2 день": false,
-      "Т2 ночь": false,
-      "Т3 день": false,
-      "Т3 ночь": false,
-      "Т внутр": false,
-      "Т общий": false,
-      "Т дублер": false,
-      "Отопление": false,
-    });
+    var selectedCountersState = useState({});
     var selectedCounters = selectedCountersState[0];
     var setSelectedCounters = selectedCountersState[1];
+
+    // Initialize selectedCounters when counterTypes loads
+    useEffect(function () {
+      if (props.counterTypes && props.counterTypes.length > 0) {
+        var initialCounters = props.counterTypes.reduce(function (acc, type) {
+          acc[type] = false;
+          return acc;
+        }, {});
+        setSelectedCounters(initialCounters);
+      }
+    }, [props.counterTypes]);
 
     var counterNumbersState = useState({});
     var counterNumbers = counterNumbersState[0];
@@ -1286,24 +1280,12 @@
               setContacts("");
               setComments("");
               setAssignedEmployeeId("");
-              setSelectedCounters({
-                "ХВС 1": false,
-                "ГВС 1": false,
-                "ХВС 2": false,
-                "ГВС 2": false,
-                "ХВС 3": false,
-                "ГВС 3": false,
-                "Т1 день": false,
-                "Т1 ночь": false,
-                "Т2 день": false,
-                "Т2 ночь": false,
-                "Т3 день": false,
-                "Т3 ночь": false,
-                "Т внутр": false,
-                "Т общий": false,
-                "Т дублер": false,
-                "Отопление": false,
-              });
+              setSelectedCounters(
+                (props.counterTypes || []).reduce(function (acc, type) {
+                  acc[type] = false;
+                  return acc;
+                }, {})
+              );
               setCounterNumbers({});
             });
         })
@@ -1492,9 +1474,13 @@
         React.createElement(
           "div",
           { className: "hint", style: { marginBottom: "12px" } },
-          "Выберите нужные типы счётчиков и укажите номера приборов (опционально)"
+          "Список загружается из базы данных. Выберите нужные типы и укажите номера приборов (опционально)."
         ),
-        React.createElement(
+        !(props.counterTypes && props.counterTypes.length) ? React.createElement(
+          "div",
+          { className: "hint", style: { padding: "12px", color: "rgba(255,255,255,0.6)" } },
+          "Типы счётчиков загружаются..."
+        ) : React.createElement(
           "div",
           { 
             style: { 
@@ -1503,360 +1489,44 @@
               gap: "12px" 
             } 
           },
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
+          props.counterTypes.map(function (counterType) {
+            return (function (type) {
+              return React.createElement(
+                "div",
+                { 
+                  key: type,
+                  style: { 
+                    display: "flex", 
+                    flexDirection: "column",
+                    gap: "6px",
+                    padding: "8px",
+                    border: "1px solid rgba(148, 163, 184, 0.3)",
+                    borderRadius: "8px",
+                  } 
                 },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ХВС 1"],
-                onChange: function () {
-                  handleCounterToggle("ХВС 1");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ХВС 1")
-            ),
-            selectedCounters["ХВС 1"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ХВС 1"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ХВС 1", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ГВС 1"],
-                onChange: function () {
-                  handleCounterToggle("ГВС 1");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ГВС 1")
-            ),
-            selectedCounters["ГВС 1"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ГВС 1"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ГВС 1", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ХВС 2"],
-                onChange: function () {
-                  handleCounterToggle("ХВС 2");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ХВС 2")
-            ),
-            selectedCounters["ХВС 2"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ХВС 2"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ХВС 2", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ГВС 2"],
-                onChange: function () {
-                  handleCounterToggle("ГВС 2");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ГВС 2")
-            ),
-            selectedCounters["ГВС 2"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ГВС 2"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ГВС 2", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ХВС 3"],
-                onChange: function () {
-                  handleCounterToggle("ХВС 3");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ХВС 3")
-            ),
-            selectedCounters["ХВС 3"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ХВС 3"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ХВС 3", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { 
-              style: { 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "6px",
-                padding: "8px",
-                border: "1px solid rgba(148, 163, 184, 0.3)",
-                borderRadius: "8px",
-              } 
-            },
-            React.createElement(
-              "label",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                },
-              },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: selectedCounters["ГВС 3"],
-                onChange: function () {
-                  handleCounterToggle("ГВС 3");
-                },
-                disabled: submitting,
-              }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "ГВС 3")
-            ),
-            selectedCounters["ГВС 3"] && React.createElement("input", {
-              className: "input",
-              type: "text",
-              placeholder: "Номер прибора (опц.)",
-              value: counterNumbers["ГВС 3"] || "",
-              onChange: function (e) {
-                handleCounterNumberChange("ГВС 3", e.target.value);
-              },
-              disabled: submitting,
-              style: { marginTop: "0" },
-            })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т1 день"], onChange: function () { handleCounterToggle("Т1 день"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т1 день")
-            ),
-            selectedCounters["Т1 день"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т1 день"] || "", onChange: function (e) { handleCounterNumberChange("Т1 день", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т1 ночь"], onChange: function () { handleCounterToggle("Т1 ночь"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т1 ночь")
-            ),
-            selectedCounters["Т1 ночь"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т1 ночь"] || "", onChange: function (e) { handleCounterNumberChange("Т1 ночь", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т2 день"], onChange: function () { handleCounterToggle("Т2 день"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т2 день")
-            ),
-            selectedCounters["Т2 день"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т2 день"] || "", onChange: function (e) { handleCounterNumberChange("Т2 день", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т2 ночь"], onChange: function () { handleCounterToggle("Т2 ночь"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т2 ночь")
-            ),
-            selectedCounters["Т2 ночь"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т2 ночь"] || "", onChange: function (e) { handleCounterNumberChange("Т2 ночь", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т3 день"], onChange: function () { handleCounterToggle("Т3 день"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т3 день")
-            ),
-            selectedCounters["Т3 день"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т3 день"] || "", onChange: function (e) { handleCounterNumberChange("Т3 день", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т3 ночь"], onChange: function () { handleCounterToggle("Т3 ночь"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т3 ночь")
-            ),
-            selectedCounters["Т3 ночь"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т3 ночь"] || "", onChange: function (e) { handleCounterNumberChange("Т3 ночь", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т внутр"], onChange: function () { handleCounterToggle("Т внутр"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т внутр")
-            ),
-            selectedCounters["Т внутр"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т внутр"] || "", onChange: function (e) { handleCounterNumberChange("Т внутр", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т общий"], onChange: function () { handleCounterToggle("Т общий"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т общий")
-            ),
-            selectedCounters["Т общий"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т общий"] || "", onChange: function (e) { handleCounterNumberChange("Т общий", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Т дублер"], onChange: function () { handleCounterToggle("Т дублер"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Т дублер")
-            ),
-            selectedCounters["Т дублер"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Т дублер"] || "", onChange: function (e) { handleCounterNumberChange("Т дублер", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          ),
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid rgba(148, 163, 184, 0.3)", borderRadius: "8px" } },
-            React.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
-              React.createElement("input", { type: "checkbox", checked: selectedCounters["Отопление"], onChange: function () { handleCounterToggle("Отопление"); }, disabled: submitting }),
-              React.createElement("span", { style: { fontWeight: "500" } }, "Отопление")
-            ),
-            selectedCounters["Отопление"] && React.createElement("input", { className: "input", type: "text", placeholder: "Номер прибора (опц.)", value: counterNumbers["Отопление"] || "", onChange: function (e) { handleCounterNumberChange("Отопление", e.target.value); }, disabled: submitting, style: { marginTop: "0" } })
-          )
+                React.createElement(
+                  "label",
+                  { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } },
+                  React.createElement("input", {
+                    type: "checkbox",
+                    checked: selectedCounters[type] || false,
+                    onChange: function () { handleCounterToggle(type); },
+                    disabled: submitting,
+                  }),
+                  React.createElement("span", { style: { fontWeight: "500" } }, type)
+                ),
+                selectedCounters[type] && React.createElement("input", {
+                  className: "input",
+                  type: "text",
+                  placeholder: "Номер прибора (опц.)",
+                  value: counterNumbers[type] || "",
+                  onChange: function (e) { handleCounterNumberChange(type, e.target.value); },
+                  disabled: submitting,
+                  style: { marginTop: "0" },
+                })
+              );
+            })(counterType);
+          })
         ),
         React.createElement(
           "button",
@@ -3554,12 +3224,16 @@
             React.createElement(
               "div",
               { className: "hint", style: { marginBottom: "12px" } },
-              "Отметьте типы счётчиков, установленных на объекте. Для каждого типа можно указать номер прибора учёта."
+              "Отметьте типы счётчиков, установленных на объекте. Список типов загружается из базы данных. Для каждого типа можно указать номер прибора учёта."
             ),
-            React.createElement(
+            !(props.counterTypes && props.counterTypes.length) ? React.createElement(
+              "div",
+              { className: "hint", style: { padding: "12px", color: "rgba(255,255,255,0.6)" } },
+              "Типы счётчиков загружаются..."
+            ) : React.createElement(
               "div",
               { style: { display: "flex", flexDirection: "column", gap: "12px" } },
-              ["ХВС 1", "ГВС 1", "ХВС 2", "ГВС 2", "ХВС 3", "ГВС 3", "Т1 день", "Т1 ночь", "Т2 день", "Т2 ночь", "Т3 день", "Т3 ночь", "Т внутр", "Т общий", "Т дублер", "Отопление"].map(function (counterType) {
+              props.counterTypes.map(function (counterType) {
                 return (function (type) {
                   return React.createElement(
                     "div",
@@ -5494,6 +5168,29 @@
     var currentScreen = currentScreenState[0];
     var setCurrentScreen = currentScreenState[1];
 
+    var counterTypesState = useState([]);
+    var counterTypes = counterTypesState[0];
+    var setCounterTypes = counterTypesState[1];
+
+    // Load counter types from database on mount
+    useEffect(function () {
+      if (!supabase) return;
+      
+      supabase
+        .from("counter_types")
+        .select("name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (!res.error && res.data) {
+            setCounterTypes(res.data.map(function (r) { return r.name; }));
+          }
+        })
+        .catch(function (err) {
+          console.error("Failed to load counter types:", err);
+        });
+    }, []);
+
     function handleNavigate(screen) {
       setCurrentScreen(screen);
     }
@@ -5515,11 +5212,13 @@
       screenContent = React.createElement(CreateObjectScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
+        counterTypes: counterTypes,
       });
     } else if (currentScreen === "edit-object") {
       screenContent = React.createElement(EditObjectScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
+        counterTypes: counterTypes,
       });
     } else if (currentScreen === "stats") {
       screenContent = React.createElement(StatsScreen, {
