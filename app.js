@@ -1869,16 +1869,15 @@
                   var readings = readingsResult.data.filter(function(r) {
                     return r.counter_id === counter.id && r.reading_date.startsWith(month);
                   });
-                  
                   if (readings.length > 0) {
-                    var latest = readings.sort(function(a, b) {
-                      if (a.reading_date > b.reading_date) return -1;
-                      if (a.reading_date < b.reading_date) return 1;
-                      return 0;
-                    })[0];
-                    statsData.data[counter.id][month] = latest.indication;
+                    var sorted = readings.slice().sort(function(a, b) {
+                      return a.reading_date.localeCompare(b.reading_date);
+                    });
+                    statsData.data[counter.id][month] = sorted.map(function(r) {
+                      return { date: r.reading_date, value: r.indication };
+                    });
                   } else {
-                    statsData.data[counter.id][month] = null;
+                    statsData.data[counter.id][month] = [];
                   }
                 });
               });
@@ -2294,19 +2293,37 @@
                     counter.counter_number ? React.createElement("span", { style: { color: "var(--text-muted)", fontSize: "11px" } }, " • № " + counter.counter_number) : null
                   ),
                   statistics.months.map(function(month) {
-                    var value = statistics.data[counter.id][month.key];
+                    var readingsInMonth = statistics.data[counter.id][month.key] || [];
+                    var formatDate = function(ymd) {
+                      if (!ymd || ymd.length < 10) return ymd;
+                      var parts = ymd.split("-");
+                      return parts[2] + "." + parts[1] + "." + parts[0];
+                    };
                     return React.createElement(
                       "td",
                       {
                         key: month.key,
                         style: {
                           padding: "10px",
-                          textAlign: "center",
+                          textAlign: "left",
                           borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
-                          color: value !== null ? "var(--text-main)" : "var(--text-muted)"
+                          color: readingsInMonth.length > 0 ? "var(--text-main)" : "var(--text-muted)",
+                          verticalAlign: "top"
                         }
                       },
-                      value !== null ? value : "—"
+                      readingsInMonth.length > 0
+                        ? React.createElement(
+                            "div",
+                            { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+                            readingsInMonth.map(function(r, idx) {
+                              return React.createElement(
+                                "div",
+                                { key: idx, style: { whiteSpace: "nowrap" } },
+                                formatDate(r.date) + " — " + r.value
+                              );
+                            })
+                          )
+                        : "—"
                     );
                   })
                 );
