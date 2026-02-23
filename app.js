@@ -525,7 +525,7 @@
         role === "owner" && React.createElement(MenuTile, {
           icon: "📦",
           title: "Архив",
-          description: "Неактивные объекты и их реактивация",
+          description: "Объекты и пользователи — восстановление из архива",
           onClick: function () {
             props.onNavigate("archive");
           },
@@ -1483,7 +1483,14 @@
                 o.name
               );
             })
-          )
+          ),
+          ownerId &&
+            React.createElement(
+              "div",
+              { className: "hint", style: { marginTop: "4px", fontSize: "11px" } },
+              "Выбрано: ",
+              ((props.owners || []).find(function (o) { return String(o.id) === String(ownerId); }) || {}).name || ""
+            )
         ),
         React.createElement(
           "div",
@@ -1511,7 +1518,20 @@
                 (emp.first_name || "") + " " + (emp.last_name || "") + (emp.email ? " (" + emp.email + ")" : "")
               );
             })
-          )
+          ),
+          assignedEmployeeId &&
+            React.createElement(
+              "div",
+              { className: "hint", style: { marginTop: "4px", fontSize: "11px" } },
+              "Выбрано: ",
+              (function () {
+                var emp = userList.find(function (e) { return String(e.id) === String(assignedEmployeeId); });
+                if (!emp) return "";
+                var name = ((emp.first_name || "") + " " + (emp.last_name || "")).trim();
+                var email = emp.email || "";
+                return (name || email || "").trim();
+              })()
+            )
         ),
         React.createElement("div", { className: "divider" }),
         React.createElement(
@@ -2314,14 +2334,9 @@
                       readingsInMonth.length > 0
                         ? React.createElement(
                             "div",
-                            { style: { display: "flex", flexDirection: "column", gap: "4px" } },
-                            readingsInMonth.map(function(r, idx) {
-                              return React.createElement(
-                                "div",
-                                { key: idx, style: { whiteSpace: "nowrap" } },
-                                formatDate(r.date) + " — " + r.value
-                              );
-                            })
+                            { style: { display: "flex", flexDirection: "column", gap: "2px" } },
+                            React.createElement("div", { style: { whiteSpace: "nowrap" } }, readingsInMonth.map(function(r) { return r.value; }).join(", ")),
+                            React.createElement("div", { style: { whiteSpace: "nowrap", fontSize: "11px", color: "var(--text-muted)" } }, readingsInMonth.map(function(r) { return formatDate(r.date); }).join(", "))
                           )
                         : "—"
                     );
@@ -3765,9 +3780,17 @@
   }
 
   function ArchiveScreen(props) {
+    var categoryState = useState("objects");
+    var category = categoryState[0];
+    var setCategory = categoryState[1];
+
     var objectsState = useState([]);
     var objects = objectsState[0];
     var setObjects = objectsState[1];
+
+    var usersState = useState([]);
+    var users = usersState[0];
+    var setUsers = usersState[1];
 
     var selectedObjectState = useState(null);
     var selectedObject = selectedObjectState[0];
@@ -3813,9 +3836,18 @@
     var success = successState[0];
     var setSuccess = successState[1];
 
+    var archiveSearchState = useState("");
+    var archiveSearch = archiveSearchState[0];
+    var setArchiveSearch = archiveSearchState[1];
+
+    var archiveAssignedMapState = useState({});
+    var archiveAssignedMap = archiveAssignedMapState[0];
+    var setArchiveAssignedMap = archiveAssignedMapState[1];
+
     useEffect(function () {
-      loadArchiveObjects();
-    }, []);
+      if (category === "objects") loadArchiveObjects();
+      else loadArchiveUsers();
+    }, [category]);
 
     function loadArchiveObjects() {
       setLoading(true);
@@ -3848,6 +3880,92 @@
           console.error(err);
           setError("Ошибка при загрузке архива");
           setLoading(false);
+        });
+    }
+
+    function loadArchiveUsers() {
+      setLoading(true);
+      setError(null);
+      setArchiveAssignedMap({});
+      supabase
+        .from("employees")
+        .select("id, email, first_name, last_name, role, max_id, phone")
+        .eq("is_active", false)
+        .then(function (result) {
+          if (result.error) {
+            console.warn("Archive users with max_id/phone failed:", result.error.message);
+            return supabase
+              .from("employees")
+              .select("id, email, first_name, last_name, role")
+              .eq("is_active", false);
+          }
+          return { data: result.data };
+        })
+        .then(function (res) {
+          var data = res && res.data ? res.data : (res && !res.error ? res.data : null);
+          if (!data) {
+            setUsers([]);
+            if (res && res.error) {
+              console.error(res.error);
+              setError("Ошибка загрузки деактивированных пользователей");
+            }
+            setLoading(false);
+            return;
+          }
+          var sorted = data.slice().sort(function (a, b) {
+            var nameA = ((a.first_name || "") + " " + (a.last_name || "")).toLowerCase();
+            var nameB = ((b.first_name || "") + " " + (b.last_name || "")).toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          setUsers(sorted);
+          var ids = sorted.map(function (e) { return e.id; });
+          if (ids.length === 0) {
+            setLoading(false);
+            return;
+          }
+          return supabase
+            .from("objects")
+            .select("object_name, object_address, assigned_employee_id")
+            .eq("is_active", true)
+            .in("assigned_employee_id", ids);
+        })
+        .then(function (objRes) {
+          if (objRes && objRes.data) {
+            var map = {};
+            objRes.data.forEach(function (o) {
+              var eid = o.assigned_employee_id;
+              if (!map[eid]) map[eid] = [];
+              map[eid].push({ name: o.object_name || "", address: o.object_address || "" });
+            });
+            setArchiveAssignedMap(map);
+          }
+          setLoading(false);
+        })
+        .catch(function (err) {
+          console.error(err);
+          setError("Ошибка при загрузке архива пользователей");
+          setLoading(false);
+        });
+    }
+
+    function handleActivateUser(emp) {
+      if (!confirm("Активировать пользователя \"" + (emp.first_name || "") + " " + (emp.last_name || "") + "\" (" + (emp.email || "") + ")?")) return;
+      setError(null);
+      supabase
+        .from("employees")
+        .update({ is_active: true })
+        .eq("id", emp.id)
+        .then(function (result) {
+          if (result.error) {
+            console.error(result.error);
+            setError("Не удалось активировать пользователя: " + result.error.message);
+            return;
+          }
+          loadArchiveUsers();
+        })
+        .catch(function (err) {
+          console.error(err);
+          setError("Ошибка при активации пользователя.");
         });
     }
 
@@ -3975,31 +4093,167 @@
             React.createElement(
               "div",
               { className: "panel-subtitle" },
-              "Неактивные объекты и их восстановление"
+              "Объекты и пользователи — восстановление из архива"
             )
           ),
           React.createElement("span", { className: "badge" }, "Блок 05")
         ),
         React.createElement("div", { className: "divider" }),
+        React.createElement(
+          "div",
+          { style: { display: "flex", gap: "8px", marginBottom: "16px" } },
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: category === "objects" ? "button" : "button-secondary button",
+              onClick: function () { setCategory("objects"); setError(null); },
+            },
+            "Объекты"
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: category === "users" ? "button" : "button-secondary button",
+              onClick: function () { setCategory("users"); setError(null); },
+            },
+            "Пользователи"
+          )
+        ),
+        !loading && React.createElement(
+          "div",
+          { style: { marginBottom: "16px" } },
+          React.createElement("div", { className: "field-label", style: { marginBottom: "6px" } }, "Поиск"),
+          React.createElement("div", { style: { display: "flex", gap: "8px" } },
+            React.createElement("input", {
+              className: "input",
+              type: "text",
+              placeholder: category === "objects" ? "Название или адрес объекта…" : "Имя, email, телефон, объект…",
+              value: archiveSearch,
+              onChange: function (e) { setArchiveSearch(e.target.value); },
+            }),
+            archiveSearch.trim() && React.createElement(
+              "button",
+              { type: "button", className: "button-secondary button", onClick: function () { setArchiveSearch(""); }, style: { marginTop: 0 } },
+              "Очистить"
+            )
+          )
+        ),
         loading
           ? React.createElement(
               "div",
               { className: "hint" },
-              "⏳ Загрузка архивных объектов..."
+              category === "objects" ? "⏳ Загрузка архивных объектов..." : "⏳ Загрузка деактивированных пользователей..."
             )
-          : objects.length > 0
+          : category === "users"
+          ? (function () {
+              var q = (archiveSearch || "").trim().toLowerCase();
+              var filteredUsers = q
+                ? users.filter(function (emp) {
+                    var name = ((emp.first_name || "") + " " + (emp.last_name || "")).trim().toLowerCase();
+                    var email = (emp.email || "").toLowerCase();
+                    var roleStr = (emp.role === "owner" ? "владелец" : "пользователь");
+                    var maxIdStr = (emp.max_id || "").toLowerCase();
+                    var phoneStr = (emp.phone || "").replace(/\D/g, "");
+                    var qDigits = q.replace(/\D/g, "");
+                    if (name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || roleStr.indexOf(q) >= 0 || maxIdStr.indexOf(q) >= 0) return true;
+                    if (qDigits.length >= 3 && phoneStr.indexOf(qDigits) >= 0) return true;
+                    var assigned = archiveAssignedMap[emp.id] || [];
+                    for (var i = 0; i < assigned.length; i++) {
+                      if ((assigned[i].name || "").toLowerCase().indexOf(q) >= 0 || (assigned[i].address || "").toLowerCase().indexOf(q) >= 0) return true;
+                    }
+                    return false;
+                  })
+                : users;
+              return filteredUsers.length > 0
+            ? React.createElement(
+                "div",
+                null,
+                React.createElement(
+                  "div",
+                  { className: "field-label" },
+                  q ? "Найдено пользователей: " + filteredUsers.length : "Деактивированных пользователей: " + users.length
+                ),
+                React.createElement(
+                  "div",
+                  { style: { display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" } },
+                  filteredUsers.map(function (emp) {
+                    return React.createElement(
+                      "div",
+                      {
+                        key: emp.id,
+                        className: "user-card",
+                        style: { opacity: 0.9 },
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "user-card-main" },
+                        React.createElement(
+                          "div",
+                          { className: "user-meta" },
+                          React.createElement(
+                            "div",
+                            { className: "user-name" },
+                            ((emp.first_name || "") + " " + (emp.last_name || "")).trim() || "—"
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "user-role" },
+                            emp.email || "—"
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "button button-ghost",
+                          onClick: function () { handleActivateUser(emp); },
+                        },
+                        "Активировать"
+                      )
+                    );
+                  })
+                )
+              )
+            : React.createElement(
+                "div",
+                { className: "alert alert-info" },
+                React.createElement("div", { className: "alert-icon" }, "i"),
+                React.createElement(
+                  "div",
+                  { className: "alert-body" },
+                  React.createElement("div", { className: "alert-title" }, q ? "Никого не найдено" : "Нет деактивированных пользователей"),
+                  React.createElement("div", { className: "alert-text" }, q ? "Измените запрос или очистите поиск." : "Все пользователи активны. Деактивация выполняется в разделе «Управление пользователями».")
+                )
+              );
+            })()
+          : (function() {
+              var q = (archiveSearch || "").trim().toLowerCase();
+              var filteredObjects = q
+                ? objects.filter(function (obj) {
+                    var name = (obj.object_name || "").toLowerCase();
+                    var addr = (obj.object_address || "").toLowerCase();
+                    var contacts = (obj.contacts || "").toLowerCase();
+                    var comments = (obj.comments || "").toLowerCase();
+                    var areaStr = (obj.area != null ? String(obj.area) : "").toLowerCase();
+                    return name.indexOf(q) >= 0 || addr.indexOf(q) >= 0 || contacts.indexOf(q) >= 0 || comments.indexOf(q) >= 0 || areaStr.indexOf(q) >= 0;
+                  })
+                : objects;
+              return filteredObjects.length > 0
           ? React.createElement(
               "div",
               null,
               React.createElement(
                 "div",
                 { className: "field-label" },
-                "Архивных объектов: " + objects.length + " (отсортированы по алфавиту)"
+                q ? "Найдено объектов: " + filteredObjects.length : "Архивных объектов: " + objects.length + " (отсортированы по алфавиту)"
               ),
               React.createElement(
                 "div",
                 { style: { display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" } },
-                objects.map(function (obj) {
+                filteredObjects.map(function (obj) {
                   return React.createElement(
                     "div",
                     {
@@ -4050,15 +4304,16 @@
                 React.createElement(
                   "div",
                   { className: "alert-title" },
-                  "Архив пуст"
+                  (archiveSearch || "").trim() ? "Ничего не найдено" : "Архив пуст"
                 ),
                 React.createElement(
                   "div",
                   { className: "alert-text" },
-                  "В архиве нет объектов. Все объекты активны."
+                  (archiveSearch || "").trim() ? "Измените запрос или очистите поиск." : "В архиве нет объектов. Все объекты активны."
                 )
               )
-            ),
+            );
+          })(),
         error &&
           React.createElement(
             "div",
@@ -4401,24 +4656,52 @@
         });
     }, [viewMode]);
 
+    var assignedObjectsMapState = useState({});
+    var assignedObjectsMap = assignedObjectsMapState[0];
+    var setAssignedObjectsMap = assignedObjectsMapState[1];
+
     useEffect(function () {
       if (viewMode !== "edit") return;
       supabase
         .from("employees")
-        .select("id, email, first_name, last_name, role")
+        .select("id, email, first_name, last_name, role, max_id, phone")
         .eq("is_active", true)
         .order("first_name")
         .then(function (res) {
           if (!res.error && res.data) {
             setEmployeesList(res.data);
-          } else if (res.error) {
-            console.error("Employees list load error:", res.error);
-            setEmployeesList([]);
+            return;
           }
+          if (res.error) {
+            console.warn("Employees list with max_id/phone failed, retrying without:", res.error.message);
+            return supabase
+              .from("employees")
+              .select("id, email, first_name, last_name, role")
+              .eq("is_active", true)
+              .order("first_name");
+          }
+        })
+        .then(function (res) {
+          if (res && res.data) setEmployeesList(res.data);
         })
         .catch(function (err) {
           console.error("Employees list fetch failed:", err);
           setEmployeesList([]);
+        });
+      supabase
+        .from("objects")
+        .select("id, object_name, object_address, assigned_employee_id")
+        .eq("is_active", true)
+        .not("assigned_employee_id", "is", null)
+        .then(function (objRes) {
+          if (objRes.error || !objRes.data) return;
+          var map = {};
+          objRes.data.forEach(function (o) {
+            var eid = o.assigned_employee_id;
+            if (!map[eid]) map[eid] = [];
+            map[eid].push({ name: o.object_name || "", address: o.object_address || "" });
+          });
+          setAssignedObjectsMap(map);
         });
     }, [viewMode]);
 
@@ -5019,7 +5302,7 @@
           React.createElement(
             "div",
             { className: "hint", style: { marginBottom: "8px" } },
-            "Введите имя, email или роль для поиска, или оставьте пустым для отображения всех пользователей"
+            "Поиск по имени, email, телефону, Max ID, роли или по названию/адресу назначенных объектов"
           ),
           React.createElement(
             "div",
@@ -5027,7 +5310,7 @@
             React.createElement("input", {
               className: "input",
               type: "text",
-              placeholder: "Поиск по имени, email или роли",
+              placeholder: "Имя, email, телефон, объект…",
               value: editUserSearch,
               onChange: function (e) { setEditUserSearch(e.target.value); },
               disabled: editSubmitting,
@@ -5047,14 +5330,68 @@
         ),
         (function () {
           var q = (editUserSearch || "").trim().toLowerCase();
-          var filtered = q
-            ? employeesList.filter(function (emp) {
-                var name = ((emp.first_name || "") + " " + (emp.last_name || "")).trim().toLowerCase();
-                var email = (emp.email || "").toLowerCase();
-                var roleStr = (emp.role === "owner" ? "владелец" : "пользователь");
-                return name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || roleStr.indexOf(q) >= 0;
-              })
-            : employeesList;
+          if (!q) {
+            return React.createElement(
+              "div",
+              { style: { marginBottom: "20px" } },
+              React.createElement("div", { className: "field-label" }, "Пользователей: " + employeesList.length + " (отсортированы по алфавиту)"),
+              React.createElement(
+                "div",
+                { style: { display: "flex", flexDirection: "column", gap: "8px" } },
+                employeesList.map(function (emp) {
+                  var name = (emp.first_name || "") + " " + (emp.last_name || "").trim();
+                  var sub = (emp.email || "") + " — " + (emp.role === "owner" ? "Владелец" : "Пользователь");
+                  var isSelected = String(emp.id) === selectedEmployeeId;
+                  return React.createElement(
+                    "div",
+                    {
+                      key: emp.id,
+                      className: "user-card",
+                      onClick: function () { setSelectedEmployeeId(isSelected ? "" : String(emp.id)); },
+                      style: { cursor: "pointer" },
+                    },
+                    React.createElement(
+                      "div",
+                      { className: "user-card-main" },
+                      React.createElement(
+                        "div",
+                        { className: "user-meta" },
+                        React.createElement("div", { className: "user-name" }, name || "—"),
+                        React.createElement("div", { className: "user-role" }, sub)
+                      )
+                    ),
+                    React.createElement(
+                      "button",
+                      {
+                        className: "button-ghost",
+                        type: "button",
+                        onClick: function (e) {
+                          e.stopPropagation();
+                          setSelectedEmployeeId(isSelected ? "" : String(emp.id));
+                        },
+                      },
+                      isSelected ? "Отменить выбор" : "Выбрать →"
+                    )
+                  );
+                })
+              )
+            );
+          }
+          var filtered = employeesList.filter(function (emp) {
+            var name = ((emp.first_name || "") + " " + (emp.last_name || "")).trim().toLowerCase();
+            var email = (emp.email || "").toLowerCase();
+            var roleStr = (emp.role === "owner" ? "владелец" : "пользователь");
+            var maxIdStr = (emp.max_id || "").toLowerCase();
+            var phoneStr = (emp.phone || "").replace(/\D/g, "");
+            var qDigits = q.replace(/\D/g, "");
+            if (name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || roleStr.indexOf(q) >= 0 || maxIdStr.indexOf(q) >= 0) return true;
+            if (qDigits.length >= 3 && phoneStr.indexOf(qDigits) >= 0) return true;
+            var assigned = assignedObjectsMap[emp.id] || [];
+            for (var i = 0; i < assigned.length; i++) {
+              if ((assigned[i].name || "").toLowerCase().indexOf(q) >= 0 || (assigned[i].address || "").toLowerCase().indexOf(q) >= 0) return true;
+            }
+            return false;
+          });
           return filtered.length > 0
             ? React.createElement(
                 "div",

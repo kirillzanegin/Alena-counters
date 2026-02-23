@@ -410,6 +410,23 @@
         cursor: not-allowed;
       }
 
+      /* Более контрастный выпадающий список (владелец / закрепить за пользователем) */
+      select.input {
+        background-color: #020617;
+        color: #e5e7eb;
+      }
+
+      select.input option {
+        background-color: #020617;
+        color: #e5e7eb;
+      }
+
+      select.input option:checked,
+      select.input option:hover {
+        background-color: #111827;
+        color: #f9fafb;
+      }
+
       .button {
         margin-top: 6px;
         padding: 9px 14px;
