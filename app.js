@@ -4388,11 +4388,20 @@
       if (viewMode !== "edit") return;
       supabase
         .from("employees")
-        .select("id, email, first_name, last_name, role, max_id, phone, notify_via_email, notify_via_telegram, notify_via_max")
+        .select("id, email, first_name, last_name, role")
         .eq("is_active", true)
         .order("first_name")
         .then(function (res) {
-          if (!res.error && res.data) setEmployeesList(res.data);
+          if (!res.error && res.data) {
+            setEmployeesList(res.data);
+          } else if (res.error) {
+            console.error("Employees list load error:", res.error);
+            setEmployeesList([]);
+          }
+        })
+        .catch(function (err) {
+          console.error("Employees list fetch failed:", err);
+          setEmployeesList([]);
         });
     }, [viewMode]);
 
@@ -4404,6 +4413,18 @@
       }
       var eid = parseInt(selectedEmployeeId, 10);
       if (!eid) return;
+      function fillEditForm(emp) {
+        setEditEmail(emp.email || "");
+        setEditFirstName(emp.first_name || "");
+        setEditLastName(emp.last_name || "");
+        setEditMaxId(emp.max_id != null ? emp.max_id : "");
+        setEditPhone(emp.phone != null ? emp.phone : "");
+        setEditNotifyViaEmail(!!emp.notify_via_email);
+        setEditNotifyViaTelegram(!!emp.notify_via_telegram);
+        setEditNotifyViaMax(!!emp.notify_via_max);
+        setEditRole(emp.role || "user");
+        setEditPassword("");
+      }
       supabase
         .from("employees")
         .select("id, email, first_name, last_name, role, max_id, phone, notify_via_email, notify_via_telegram, notify_via_max")
@@ -4412,17 +4433,19 @@
         .single()
         .then(function (empRes) {
           if (!empRes.error && empRes.data) {
-            var emp = empRes.data;
-            setEditEmail(emp.email || "");
-            setEditFirstName(emp.first_name || "");
-            setEditLastName(emp.last_name || "");
-            setEditMaxId(emp.max_id || "");
-            setEditPhone(emp.phone || "");
-            setEditNotifyViaEmail(!!emp.notify_via_email);
-            setEditNotifyViaTelegram(!!emp.notify_via_telegram);
-            setEditNotifyViaMax(!!emp.notify_via_max);
-            setEditRole(emp.role || "user");
-            setEditPassword("");
+            fillEditForm(empRes.data);
+          } else if (empRes.error) {
+            supabase
+              .from("employees")
+              .select("id, email, first_name, last_name, role")
+              .eq("id", eid)
+              .eq("is_active", true)
+              .single()
+              .then(function (fallbackRes) {
+                if (!fallbackRes.error && fallbackRes.data) {
+                  fillEditForm(fallbackRes.data);
+                }
+              });
           }
         });
       supabase

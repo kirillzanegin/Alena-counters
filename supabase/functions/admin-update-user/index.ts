@@ -100,8 +100,13 @@ serve(async (req: Request) => {
     });
   }
 
-  const employee_id = typeof body.employee_id === "number" ? body.employee_id : null;
-  if (employee_id == null) {
+  const employee_id =
+    typeof body.employee_id === "number"
+      ? body.employee_id
+      : typeof body.employee_id === "string"
+        ? parseInt(body.employee_id, 10)
+        : null;
+  if (employee_id == null || isNaN(employee_id)) {
     return new Response(JSON.stringify({ error: "Укажите employee_id" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -110,7 +115,7 @@ serve(async (req: Request) => {
 
   const { data: employee, error: fetchErr } = await supabaseAdmin
     .from("employees")
-    .select("id, auth_user_id, email, first_name, last_name, role, max_id, phone")
+    .select("id, auth_user_id, email, first_name, last_name, role")
     .eq("id", employee_id)
     .eq("is_active", true)
     .maybeSingle();
