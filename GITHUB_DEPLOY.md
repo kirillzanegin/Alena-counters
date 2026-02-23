@@ -41,3 +41,31 @@ git push origin main
 ```
 
 После `git status` проверьте список файлов. Если всё верно — выполните следующие две строки.
+
+---
+
+## Запустить деплой снова (если предыдущий прервали)
+
+1. Откройте терминал (PowerShell).
+2. Выполните по порядку:
+
+```powershell
+cd c:\Users\Admin\Downloads\Alena
+git status
+```
+
+- Если видите **«nothing to commit, working tree clean»** — все изменения уже закоммичены. Тогда просто снова отправьте на GitHub:
+
+```powershell
+git push origin main
+```
+
+- Если видите **список изменённых файлов** — добавьте их, сделайте коммит и отправьте:
+
+```powershell
+git add -A
+git commit -m "Deploy: SQL Editor steps, deploy docs, edge function fixes"
+git push origin main
+```
+
+3. Дождитесь окончания `git push` (появится строка вида `xxxxx..yyyyy main -> main`). После этого репозиторий на GitHub обновится.
