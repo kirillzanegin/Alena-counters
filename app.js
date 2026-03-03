@@ -523,6 +523,14 @@
           },
         }),
         role === "owner" && React.createElement(MenuTile, {
+          icon: "🏭",
+          title: "Операторы",
+          description: "Просмотр объектов по обслуживающим организациям",
+          onClick: function () {
+            props.onNavigate("operators");
+          },
+        }),
+        role === "owner" && React.createElement(MenuTile, {
           icon: "📦",
           title: "Архив",
           description: "Объекты и пользователи — восстановление из архива",
@@ -699,7 +707,31 @@
             return;
           }
 
-          setCounters(result.data);
+          var list = result.data || [];
+
+          // Сортируем счётчики по порядку типов из таблицы counter_types
+          if (props.counterTypes && props.counterTypes.length) {
+            var orderMap = {};
+            for (var i = 0; i < props.counterTypes.length; i++) {
+              orderMap[props.counterTypes[i]] = i;
+            }
+            list.sort(function (a, b) {
+              var ia = Object.prototype.hasOwnProperty.call(orderMap, a.counter_type)
+                ? orderMap[a.counter_type]
+                : 9999;
+              var ib = Object.prototype.hasOwnProperty.call(orderMap, b.counter_type)
+                ? orderMap[b.counter_type]
+                : 9999;
+              if (ia !== ib) return ia - ib;
+              var nameA = (a.counter_type || "").toLowerCase();
+              var nameB = (b.counter_type || "").toLowerCase();
+              if (nameA < nameB) return -1;
+              if (nameA > nameB) return 1;
+              return 0;
+            });
+          }
+
+          setCounters(list);
         })
         .catch(function (err) {
           console.error(err);
@@ -747,6 +779,55 @@
 
       setSubmitting(true);
 
+      // Проверяем, есть ли уже показания за этот месяц для любого из счётчиков
+      var monthStart = readingDate.substring(0, 7) + "-01"; // YYYY-MM-01
+      var dateParts = readingDate.substring(0, 7).split("-");
+      var nextMonthNum = parseInt(dateParts[1]) === 12 ? 1 : parseInt(dateParts[1]) + 1;
+      var nextYearNum = parseInt(dateParts[1]) === 12 ? parseInt(dateParts[0]) + 1 : parseInt(dateParts[0]);
+      var monthEnd = nextYearNum + "-" + String(nextMonthNum).padStart(2, "0") + "-01";
+      var counterIdsToCheck = readingsToInsert.map(function(r) { return r.counter_id; });
+
+      supabase
+        .from("meter_readings")
+        .select("counter_id")
+        .in("counter_id", counterIdsToCheck)
+        .gte("reading_date", monthStart)
+        .lt("reading_date", monthEnd)
+        .then(function(checkResult) {
+          if (checkResult.error) {
+            setError("Ошибка при проверке дублей: " + checkResult.error.message);
+            setSubmitting(false);
+            return;
+          }
+
+          if (checkResult.data && checkResult.data.length > 0) {
+            // Найдём названия счётчиков с дублями
+            var dupIds = {};
+            for (var d = 0; d < checkResult.data.length; d++) {
+              dupIds[checkResult.data[d].counter_id] = true;
+            }
+            var dupNames = [];
+            for (var c = 0; c < counters.length; c++) {
+              if (dupIds[counters[c].id]) {
+                dupNames.push(counters[c].counter_type + (counters[c].counter_number ? " № " + counters[c].counter_number : ""));
+              }
+            }
+            var monthLabel = readingDate.substring(0, 7);
+            setError("Показания за " + monthLabel + " уже внесены для: " + dupNames.join(", "));
+            setSubmitting(false);
+            return;
+          }
+
+          // Дублей нет — сохраняем
+          doInsertReadings();
+        })
+        .catch(function(err) {
+          console.error(err);
+          setError("Ошибка при проверке показаний");
+          setSubmitting(false);
+        });
+
+      function doInsertReadings() {
       supabase
         .from("meter_readings")
         .insert(readingsToInsert)
@@ -776,6 +857,7 @@
           setError("Ошибка при сохранении показаний");
           setSubmitting(false);
         });
+      } // end doInsertReadings
     }
 
     return React.createElement(
@@ -1039,7 +1121,14 @@
                           counter.counter_type,
                           counter.counter_number
                             ? " • № " + counter.counter_number
-                            : ""
+                            : "",
+                          counter.counter_comment
+                            ? React.createElement(
+                                "div",
+                                { style: { fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" } },
+                                counter.counter_comment
+                              )
+                            : null
                         ),
                         React.createElement("input", {
                           className: "input",
@@ -1159,6 +1248,18 @@
     var counterNumbersState = useState({});
     var counterNumbers = counterNumbersState[0];
     var setCounterNumbers = counterNumbersState[1];
+    var counterCommentsState = useState({});
+    var counterComments = counterCommentsState[0];
+    var setCounterComments = counterCommentsState[1];
+    var counterOperatorsState = useState({});
+    var counterOperators = counterOperatorsState[0];
+    var setCounterOperators = counterOperatorsState[1];
+    var counterVerificationDatesState = useState({});
+    var counterVerificationDates = counterVerificationDatesState[0];
+    var setCounterVerificationDates = counterVerificationDatesState[1];
+    var counterValidUntilState = useState({});
+    var counterValidUntil = counterValidUntilState[0];
+    var setCounterValidUntil = counterValidUntilState[1];
 
     var submittingState = useState(false);
     var submitting = submittingState[0];
@@ -1212,6 +1313,42 @@
       }
       updated[type] = value;
       setCounterNumbers(updated);
+    }
+
+    function handleCounterCommentChange(type, value) {
+      var updated = {};
+      for (var key in counterComments) {
+        updated[key] = counterComments[key];
+      }
+      updated[type] = value;
+      setCounterComments(updated);
+    }
+
+    function handleCounterOperatorChange(type, value) {
+      var updated = {};
+      for (var key in counterOperators) {
+        updated[key] = counterOperators[key];
+      }
+      updated[type] = value;
+      setCounterOperators(updated);
+    }
+
+    function handleCounterVerificationDateChange(type, value) {
+      var updated = {};
+      for (var key in counterVerificationDates) {
+        updated[key] = counterVerificationDates[key];
+      }
+      updated[type] = value;
+      setCounterVerificationDates(updated);
+    }
+
+    function handleCounterValidUntilChange(type, value) {
+      var updated = {};
+      for (var key in counterValidUntil) {
+        updated[key] = counterValidUntil[key];
+      }
+      updated[type] = value;
+      setCounterValidUntil(updated);
     }
 
     function handleSubmit(e) {
@@ -1268,10 +1405,18 @@
           for (var type in selectedCounters) {
             if (selectedCounters[type]) {
               var counterNumber = counterNumbers[type];
+              var counterComment = counterComments[type];
+              var counterOperator = counterOperators[type];
+              var verificationDate = counterVerificationDates[type];
+              var validUntilDate = counterValidUntil[type];
               countersToInsert.push({
                 object_id: newObject.id,
                 counter_type: type,
                 counter_number: counterNumber && counterNumber.trim() ? counterNumber.trim() : null,
+                counter_comment: counterComment && counterComment.trim() ? counterComment.trim() : null,
+                verification_date: verificationDate && verificationDate.trim() ? verificationDate.trim() : null,
+                valid_until: validUntilDate && validUntilDate.trim() ? validUntilDate.trim() : null,
+                operator_id: counterOperator && counterOperator.trim ? counterOperator.trim() : null,
                 is_active: true,
               });
             }
@@ -1308,6 +1453,10 @@
                 }, {})
               );
               setCounterNumbers({});
+              setCounterComments({});
+              setCounterOperators({});
+              setCounterVerificationDates({});
+              setCounterValidUntil({});
             });
         })
         .catch(function (err) {
@@ -1584,15 +1733,72 @@
                   }),
                   React.createElement("span", { style: { fontWeight: "500" } }, type)
                 ),
-                selectedCounters[type] && React.createElement("input", {
-                  className: "input",
-                  type: "text",
-                  placeholder: "Номер прибора (опц.)",
-                  value: counterNumbers[type] || "",
-                  onChange: function (e) { handleCounterNumberChange(type, e.target.value); },
-                  disabled: submitting,
-                  style: { marginTop: "0" },
-                })
+                selectedCounters[type] && React.createElement(
+                  "div",
+                  { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Номер прибора (опц.)",
+                    value: counterNumbers[type] || "",
+                    onChange: function (e) { handleCounterNumberChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Комментарий (опц.)",
+                    value: counterComments[type] || "",
+                    onChange: function (e) { handleCounterCommentChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement(
+                    "select",
+                    {
+                      className: "input",
+                      value: counterOperators[type] || "",
+                      onChange: function (e) { handleCounterOperatorChange(type, e.target.value); },
+                      disabled: submitting,
+                      style: { marginTop: "0" },
+                    },
+                    React.createElement("option", { value: "" }, "Оператор не выбран"),
+                    (props.operators || []).map(function (op) {
+                      return React.createElement(
+                        "option",
+                        { key: op.id, value: op.id },
+                        op.name
+                      );
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
+                    "Дата поверки"
+                  ),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "date",
+                    value: counterVerificationDates[type] || "",
+                    onChange: function (e) { handleCounterVerificationDateChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement(
+                    "div",
+                    { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
+                    "Действует до"
+                  ),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "date",
+                    value: counterValidUntil[type] || "",
+                    onChange: function (e) { handleCounterValidUntilChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  })
+                )
               );
             })(counterType);
           })
@@ -1811,7 +2017,7 @@
 
       supabase
         .from("counters")
-        .select("id, counter_type, counter_number")
+        .select("id, counter_type, counter_number, counter_comment")
         .eq("object_id", selectedObject.id)
         .eq("is_active", true)
         .then(function (countersResult) {
@@ -1828,7 +2034,30 @@
             return;
           }
 
-          var counterIds = countersResult.data.map(function (c) {
+          // Сортируем счётчики по приоритету типов из таблицы counter_types
+          var countersList = countersResult.data.slice();
+          if (props.counterTypes && props.counterTypes.length) {
+            var orderMap = {};
+            for (var i = 0; i < props.counterTypes.length; i++) {
+              orderMap[props.counterTypes[i]] = i;
+            }
+            countersList.sort(function (a, b) {
+              var ia = Object.prototype.hasOwnProperty.call(orderMap, a.counter_type)
+                ? orderMap[a.counter_type]
+                : 9999;
+              var ib = Object.prototype.hasOwnProperty.call(orderMap, b.counter_type)
+                ? orderMap[b.counter_type]
+                : 9999;
+              if (ia !== ib) return ia - ib;
+              var nameA = (a.counter_type || "").toLowerCase();
+              var nameB = (b.counter_type || "").toLowerCase();
+              if (nameA < nameB) return -1;
+              if (nameA > nameB) return 1;
+              return 0;
+            });
+          }
+
+          var counterIds = countersList.map(function (c) {
             return c.id;
           });
 
@@ -1872,7 +2101,7 @@
               };
 
               var statsData = {
-                counters: countersResult.data,
+                counters: countersList,
                 months: months.map(function(m) {
                   var parts = m.split("-");
                   return {
@@ -1883,7 +2112,7 @@
                 data: {}
               };
 
-              countersResult.data.forEach(function(counter) {
+              countersList.forEach(function(counter) {
                 statsData.data[counter.id] = {};
                 months.forEach(function(month) {
                   var readings = readingsResult.data.filter(function(r) {
@@ -2309,8 +2538,23 @@
                         zIndex: 1
                       }
                     },
-                    counter.counter_type,
-                    counter.counter_number ? React.createElement("span", { style: { color: "var(--text-muted)", fontSize: "11px" } }, " • № " + counter.counter_number) : null
+                    React.createElement(
+                      "div",
+                      { style: { display: "flex", flexDirection: "column", gap: "2px" } },
+                      React.createElement(
+                        "div",
+                        null,
+                        counter.counter_type,
+                        counter.counter_number ? React.createElement("span", { style: { color: "var(--text-muted)", fontSize: "11px" } }, " • № " + counter.counter_number) : null
+                      ),
+                      counter.counter_comment
+                        ? React.createElement(
+                            "div",
+                            { style: { color: "var(--text-muted)", fontSize: "11px" } },
+                            counter.counter_comment
+                          )
+                        : null
+                    )
                   ),
                   statistics.months.map(function(month) {
                     var readingsInMonth = statistics.data[counter.id][month.key] || [];
@@ -2436,6 +2680,18 @@
     var counterNumbersState = useState({});
     var counterNumbers = counterNumbersState[0];
     var setCounterNumbers = counterNumbersState[1];
+    var counterCommentsState = useState({});
+    var counterComments = counterCommentsState[0];
+    var setCounterComments = counterCommentsState[1];
+    var counterOperatorsState = useState({});
+    var counterOperators = counterOperatorsState[0];
+    var setCounterOperators = counterOperatorsState[1];
+    var counterVerificationDatesState = useState({});
+    var counterVerificationDates = counterVerificationDatesState[0];
+    var setCounterVerificationDates = counterVerificationDatesState[1];
+    var counterValidUntilState = useState({});
+    var counterValidUntil = counterValidUntilState[0];
+    var setCounterValidUntil = counterValidUntilState[1];
 
     var assignedEmployeeIdState = useState("");
     var assignedEmployeeId = assignedEmployeeIdState[0];
@@ -2573,6 +2829,7 @@
         .from("counters")
         .select("*")
         .eq("object_id", obj.id)
+        .eq("is_active", true)
         .then(function (result) {
           if (result.error) {
             console.error(result.error);
@@ -2585,6 +2842,10 @@
           
           var selected = {};
           var numbers = {};
+          var commentsMap = {};
+          var operatorsMap = {};
+          var verificationMap = {};
+          var validUntilMap = {};
           
           for (var i = 0; i < result.data.length; i++) {
             var counter = result.data[i];
@@ -2592,10 +2853,26 @@
             if (counter.counter_number) {
               numbers[counter.counter_type] = counter.counter_number;
             }
+            if (counter.counter_comment) {
+              commentsMap[counter.counter_type] = counter.counter_comment;
+            }
+            if (counter.operator_id) {
+              operatorsMap[counter.counter_type] = counter.operator_id;
+            }
+            if (counter.verification_date) {
+              verificationMap[counter.counter_type] = counter.verification_date;
+            }
+            if (counter.valid_until) {
+              validUntilMap[counter.counter_type] = counter.valid_until;
+            }
           }
           
           setSelectedCounters(selected);
           setCounterNumbers(numbers);
+          setCounterComments(commentsMap);
+          setCounterOperators(operatorsMap);
+          setCounterVerificationDates(verificationMap);
+          setCounterValidUntil(validUntilMap);
           setStep("edit");
         })
         .catch(function (err) {
@@ -2641,6 +2918,7 @@
 
           var counterPromises = [];
           
+          // Handle selected (checked) counter types — create new or update existing
           for (var counterType in selectedCounters) {
             if (selectedCounters[counterType]) {
               var existingCounter = null;
@@ -2652,29 +2930,63 @@
               }
               
               if (!existingCounter) {
+                // New counter — insert
                 var newCounter = {
                   object_id: selectedObject.id,
                   counter_type: counterType,
                   counter_number: counterNumbers[counterType] ? counterNumbers[counterType].trim() : null,
+                  counter_comment: counterComments[counterType] ? counterComments[counterType].trim() : null,
+                  operator_id: counterOperators[counterType] ? counterOperators[counterType].trim() : null,
+                  verification_date: counterVerificationDates[counterType] || null,
+                  valid_until: counterValidUntil[counterType] || null,
                   is_active: true
                 };
-                
                 counterPromises.push(
                   supabase.from("counters").insert([newCounter])
                 );
               } else {
+                // Existing counter — update if changed
                 var newNumber = counterNumbers[counterType] ? counterNumbers[counterType].trim() : null;
                 var oldNumber = existingCounter.counter_number || null;
+                var newComment = counterComments[counterType] ? counterComments[counterType].trim() : null;
+                var oldComment = existingCounter.counter_comment || null;
+                var newOp = counterOperators[counterType] ? counterOperators[counterType].trim() : null;
+                var oldOp = existingCounter.operator_id || null;
+                var newVerif = counterVerificationDates[counterType] || null;
+                var oldVerif = existingCounter.verification_date || null;
+                var newValid = counterValidUntil[counterType] || null;
+                var oldValid = existingCounter.valid_until || null;
+                var wasActive = existingCounter.is_active !== false;
                 
-                if (newNumber !== oldNumber) {
+                if (!wasActive || newNumber !== oldNumber || newComment !== oldComment || newOp !== oldOp || newVerif !== oldVerif || newValid !== oldValid) {
                   counterPromises.push(
                     supabase
                       .from("counters")
-                      .update({ counter_number: newNumber })
+                      .update({
+                        counter_number: newNumber,
+                        counter_comment: newComment,
+                        operator_id: newOp,
+                        verification_date: newVerif,
+                        valid_until: newValid,
+                        is_active: true
+                      })
                       .eq("id", existingCounter.id)
                   );
                 }
               }
+            }
+          }
+
+          // Deactivate counters that were unchecked
+          for (var j = 0; j < existingCounters.length; j++) {
+            var ec = existingCounters[j];
+            if (!selectedCounters[ec.counter_type] && ec.is_active !== false) {
+              counterPromises.push(
+                supabase
+                  .from("counters")
+                  .update({ is_active: false })
+                  .eq("id", ec.id)
+              );
             }
           }
           
@@ -3393,10 +3705,10 @@
                     ),
                     selectedCounters[type] && React.createElement(
                       "div",
-                      { style: { marginLeft: "24px" } },
+                      { style: { marginLeft: "24px", display: "flex", flexDirection: "column", gap: "4px" } },
                       React.createElement(
                         "div",
-                        { className: "hint", style: { marginBottom: "4px", fontSize: "11px" } },
+                        { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
                         "Номер прибора (необязательно)"
                       ),
                       React.createElement("input", {
@@ -3411,6 +3723,87 @@
                           }
                           newNumbers[type] = e.target.value;
                           setCounterNumbers(newNumbers);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "text",
+                        placeholder: "Комментарий по счётчику (опц.)",
+                        value: counterComments[type] || "",
+                        onChange: function (e) {
+                          var newComments = {};
+                          for (var key in counterComments) {
+                            newComments[key] = counterComments[key];
+                          }
+                          newComments[type] = e.target.value;
+                          setCounterComments(newComments);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "input",
+                          value: counterOperators[type] || "",
+                          onChange: function (e) {
+                            var newOps = {};
+                            for (var key in counterOperators) {
+                              newOps[key] = counterOperators[key];
+                            }
+                            newOps[type] = e.target.value;
+                            setCounterOperators(newOps);
+                          },
+                          disabled: submitting,
+                          style: { fontSize: "12px" }
+                        },
+                        React.createElement("option", { value: "" }, "Оператор не выбран"),
+                        (props.operators || []).map(function (op) {
+                          return React.createElement(
+                            "option",
+                            { key: op.id, value: op.id },
+                            op.name
+                          );
+                        })
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
+                        "Дата поверки"
+                      ),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "date",
+                        value: counterVerificationDates[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterVerificationDates) {
+                            updated[key] = counterVerificationDates[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterVerificationDates(updated);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement(
+                        "div",
+                        { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
+                        "Действует до"
+                      ),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "date",
+                        value: counterValidUntil[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterValidUntil) {
+                            updated[key] = counterValidUntil[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterValidUntil(updated);
                         },
                         disabled: submitting,
                         style: { fontSize: "12px" }
@@ -3777,6 +4170,216 @@
           )
       );
     }
+  }
+
+  function OperatorsScreen(props) {
+    var operatorsState = useState([]);
+    var operators = operatorsState[0];
+    var setOperators = operatorsState[1];
+
+    var selectedOperatorState = useState(null); // null = все
+    var selectedOperator = selectedOperatorState[0];
+    var setSelectedOperator = selectedOperatorState[1];
+
+    var objectsState = useState([]);
+    var objects = objectsState[0];
+    var setObjects = objectsState[1];
+
+    var loadingState = useState(false);
+    var loading = loadingState[0];
+    var setLoading = loadingState[1];
+
+    var errorState = useState(null);
+    var error = errorState[0];
+    var setError = errorState[1];
+
+    useEffect(function () {
+      supabase
+        .from("operators")
+        .select("id, name, sort_order")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (!res.error && res.data) setOperators(res.data);
+        });
+    }, []);
+
+    useEffect(function () {
+      setLoading(true);
+      setError(null);
+      setObjects([]);
+
+      if (selectedOperator === null) {
+        // Все операторы — показываем все активные объекты
+        supabase
+          .from("objects")
+          .select("id, object_name, object_address")
+          .eq("is_active", true)
+          .order("object_name")
+          .then(function (res) {
+            setLoading(false);
+            if (res.error) { setError("Ошибка загрузки объектов"); return; }
+            setObjects(res.data || []);
+          });
+      } else {
+        // Находим все объекты, у которых есть хотя бы один счётчик с выбранным оператором
+        supabase
+          .from("counters")
+          .select("object_id, counter_type, counter_number, objects(id, object_name, object_address, is_active)")
+          .eq("operator_id", selectedOperator.id)
+          .then(function (res) {
+            setLoading(false);
+            if (res.error) { setError("Ошибка загрузки данных"); return; }
+            var data = res.data || [];
+            // Группируем счётчики по объекту
+            var objMap = {};
+            for (var i = 0; i < data.length; i++) {
+              var row = data[i];
+              if (!row.objects || !row.objects.is_active) continue;
+              var oid = row.objects.id;
+              if (!objMap[oid]) {
+                objMap[oid] = {
+                  id: oid,
+                  object_name: row.objects.object_name,
+                  object_address: row.objects.object_address,
+                  counters: []
+                };
+              }
+              objMap[oid].counters.push({
+                counter_type: row.counter_type,
+                counter_number: row.counter_number
+              });
+            }
+            var result = Object.values(objMap).sort(function(a, b) {
+              return (a.object_name || "").localeCompare(b.object_name || "", "ru");
+            });
+            setObjects(result);
+          });
+      }
+    }, [selectedOperator]);
+
+    return React.createElement(
+      "div",
+      null,
+      React.createElement(
+        "div",
+        { className: "panel-header" },
+        React.createElement(
+          "button",
+          { className: "button-ghost", style: { marginBottom: "12px" }, onClick: function () { props.onNavigate("menu"); } },
+          "← Назад в меню"
+        ),
+        React.createElement("div", { className: "panel-title" }, "Операторы"),
+        React.createElement("div", { className: "panel-subtitle" }, "Просмотр объектов по обслуживающим организациям")
+      ),
+      // Кнопки-фильтры операторов
+      React.createElement(
+        "div",
+        { style: { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" } },
+        React.createElement(
+          "button",
+          {
+            className: selectedOperator === null ? "badge" : "button-ghost",
+            style: {
+              padding: "6px 14px",
+              borderRadius: "20px",
+              cursor: "pointer",
+              fontWeight: selectedOperator === null ? "600" : "normal",
+              background: selectedOperator === null ? "var(--accent)" : "transparent",
+              color: selectedOperator === null ? "#fff" : "var(--text-muted)",
+              border: selectedOperator === null ? "none" : "1px solid rgba(148,163,184,0.3)",
+            },
+            onClick: function () { setSelectedOperator(null); }
+          },
+          "Все"
+        ),
+        operators.map(function (op) {
+          var isActive = selectedOperator && selectedOperator.id === op.id;
+          return React.createElement(
+            "button",
+            {
+              key: op.id,
+              style: {
+                padding: "6px 14px",
+                borderRadius: "20px",
+                cursor: "pointer",
+                fontWeight: isActive ? "600" : "normal",
+                background: isActive ? "var(--accent)" : "transparent",
+                color: isActive ? "#fff" : "var(--text-muted)",
+                border: isActive ? "none" : "1px solid rgba(148,163,184,0.3)",
+              },
+              onClick: function () { setSelectedOperator(op); }
+            },
+            op.name
+          );
+        })
+      ),
+      // Заголовок результатов
+      React.createElement(
+        "div",
+        { style: { fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" } },
+        loading ? "Загрузка..." :
+          selectedOperator === null
+            ? "Все активные объекты: " + objects.length
+            : "Объекты оператора «" + selectedOperator.name + "»: " + objects.length
+      ),
+      error && React.createElement("div", { className: "alert alert-error", style: { marginBottom: "12px" } },
+        React.createElement("div", { className: "alert-text" }, error)
+      ),
+      // Список объектов
+      !loading && objects.length === 0 && !error && React.createElement(
+        "div",
+        { style: { color: "var(--text-muted)", textAlign: "center", padding: "32px 0", fontSize: "14px" } },
+        selectedOperator ? "У оператора «" + selectedOperator.name + "» нет объектов" : "Нет объектов"
+      ),
+      objects.map(function (obj) {
+        return React.createElement(
+          "div",
+          {
+            key: obj.id,
+            style: {
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(148,163,184,0.15)",
+              borderRadius: "10px",
+              padding: "12px 14px",
+              marginBottom: "8px"
+            }
+          },
+          React.createElement(
+            "div",
+            { style: { fontWeight: "600", fontSize: "14px", marginBottom: "2px" } },
+            obj.object_name || "—"
+          ),
+          React.createElement(
+            "div",
+            { style: { fontSize: "12px", color: "var(--text-muted)" } },
+            obj.object_address || ""
+          ),
+          obj.counters && obj.counters.length > 0 && React.createElement(
+            "div",
+            { style: { marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "6px" } },
+            obj.counters.map(function (c, idx) {
+              return React.createElement(
+                "span",
+                {
+                  key: idx,
+                  style: {
+                    background: "rgba(59,130,246,0.15)",
+                    border: "1px solid rgba(59,130,246,0.3)",
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    color: "rgba(147,197,253,1)"
+                  }
+                },
+                c.counter_type,
+                c.counter_number ? " · " + c.counter_number : ""
+              );
+            })
+          )
+        );
+      })
+    );
   }
 
   function ArchiveScreen(props) {
@@ -5817,6 +6420,10 @@
     var owners = ownersState[0];
     var setOwners = ownersState[1];
 
+    var operatorsState = useState([]);
+    var operators = operatorsState[0];
+    var setOperators = operatorsState[1];
+
     // Load counter types and owners from database on mount
     useEffect(function () {
       if (!supabase) return;
@@ -5848,6 +6455,20 @@
         .catch(function (err) {
           console.error("Failed to load owners:", err);
         });
+
+      supabase
+        .from("operators")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (!res.error && res.data) {
+            setOperators(res.data);
+          }
+        })
+        .catch(function (err) {
+          console.error("Failed to load operators:", err);
+        });
     }, []);
 
     function handleNavigate(screen) {
@@ -5866,6 +6487,7 @@
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         employee: props.employee,
+        counterTypes: counterTypes,
       });
     } else if (currentScreen === "create-object") {
       screenContent = React.createElement(CreateObjectScreen, {
@@ -5873,6 +6495,7 @@
         onLogout: props.onLogout,
         counterTypes: counterTypes,
         owners: owners,
+        operators: operators,
       });
     } else if (currentScreen === "edit-object") {
       screenContent = React.createElement(EditObjectScreen, {
@@ -5880,12 +6503,19 @@
         onLogout: props.onLogout,
         counterTypes: counterTypes,
         owners: owners,
+        operators: operators,
       });
     } else if (currentScreen === "stats") {
       screenContent = React.createElement(StatsScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         employee: props.employee,
+        counterTypes: counterTypes,
+      });
+    } else if (currentScreen === "operators") {
+      screenContent = React.createElement(OperatorsScreen, {
+        onNavigate: handleNavigate,
+        onLogout: props.onLogout,
       });
     } else if (currentScreen === "archive") {
       screenContent = React.createElement(ArchiveScreen, {

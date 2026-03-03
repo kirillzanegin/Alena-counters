@@ -15,7 +15,7 @@
 
 ```bash
 npx supabase login
-npx supabase link --project-ref ВАШ_PROJECT_REF
+npx supabase link --projнect-ref ВАШ_PROJECT_REF
 npx supabase functions deploy admin-update-user
 npx supabase functions deploy admin-create-user
 ```

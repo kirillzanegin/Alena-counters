@@ -410,6 +410,18 @@
         cursor: not-allowed;
       }
 
+      /* Сделать иконку календаря на date-полях заметной на тёмном фоне */
+    input.input[type="date"] {
+      color-scheme: dark;
+      color: #e0e0e0;
+    }
+
+    input.input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.9);
+      cursor: pointer;
+      opacity: 1 !important;
+    }
+
       /* Более контрастный выпадающий список (владелец / закрепить за пользователем) */
       select.input {
         background-color: #020617;
@@ -1176,7 +1188,7 @@
     ></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-    <script src="./app.js?v=2"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>
 
