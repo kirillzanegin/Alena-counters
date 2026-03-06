@@ -2109,11 +2109,16 @@
                     label: monthNames[parts[1]] + " " + parts[0]
                   };
                 }),
-                data: {}
+                data: {},
+                // consumption[counterId][monthKey] = разница между последним значением этого месяца и предыдущего
+                consumption: {}
               };
 
               countersList.forEach(function(counter) {
                 statsData.data[counter.id] = {};
+                statsData.consumption[counter.id] = {};
+
+                // Сохраняем показания по месяцам
                 months.forEach(function(month) {
                   var readings = readingsResult.data.filter(function(r) {
                     return r.counter_id === counter.id && r.reading_date.startsWith(month);
@@ -2129,6 +2134,23 @@
                     statsData.data[counter.id][month] = [];
                   }
                 });
+
+                // Считаем помесячное потребление (разница с предыдущим месяцем)
+                for (var mi = 1; mi < months.length; mi++) {
+                  var prevKey = months[mi - 1];
+                  var currKey = months[mi];
+                  var prevList = statsData.data[counter.id][prevKey] || [];
+                  var currList = statsData.data[counter.id][currKey] || [];
+                  if (prevList.length > 0 && currList.length > 0) {
+                    var prevLast = prevList[prevList.length - 1].value;
+                    var currLast = currList[currList.length - 1].value;
+                    var diff = currLast - prevLast;
+                    statsData.consumption[counter.id][currKey] = diff;
+                  } else {
+                    // Если нет предыдущего или текущего месяца — потребление не показываем
+                    statsData.consumption[counter.id][currKey] = null;
+                  }
+                }
               });
 
               setStatistics(statsData);
@@ -2141,6 +2163,121 @@
           setError("Ошибка при загрузке данных");
           setLoading(false);
         });
+    }
+
+    function handleExportStatisticsToExcel() {
+      if (!statistics || !statistics.counters || !statistics.months) return;
+
+      // Используем точку с запятой как разделитель столбцов (подходит для русской локали Excel)
+      var sep = ";";
+      var rows = [];
+
+      // Первая строка: название объекта
+      rows.push([
+        "Объект",
+        selectedObject && selectedObject.object_name
+          ? selectedObject.object_name
+          : ""
+      ]);
+
+      // Вторая строка: пустая (для красоты)
+      rows.push([]);
+
+      // Третья строка: заголовки колонок
+      // Для каждого месяца создаём 3 колонки: значение, дата, расход
+      var header = ["Счётчик"];
+      statistics.months.forEach(function (m) {
+        header.push(m.label + " — значение");
+        header.push(m.label + " — дата");
+        header.push(m.label + " — расход");
+      });
+      rows.push(header);
+
+      // Строки по счётчикам
+      statistics.counters.forEach(function (counter) {
+        var firstCol = counter.counter_type +
+          (counter.counter_number ? " № " + counter.counter_number : "") +
+          (counter.counter_comment ? " — " + counter.counter_comment : "");
+
+        var row = [firstCol];
+
+        statistics.months.forEach(function (month) {
+          var readingsInMonth =
+            (statistics.data &&
+              statistics.data[counter.id] &&
+              statistics.data[counter.id][month.key]) ||
+            [];
+          var consumptionValue =
+            statistics.consumption &&
+            statistics.consumption[counter.id] &&
+            statistics.consumption[counter.id][month.key] != null
+              ? Number(statistics.consumption[counter.id][month.key]).toFixed(3)
+              : null;
+
+          if (readingsInMonth.length === 0) {
+            // Для месяца всегда добавляем 3 ячейки: значение, дата, расход
+            row.push("—"); // значение
+            row.push("—"); // дата
+            row.push("");  // расход
+          } else {
+            // Берём последнее показание месяца (как в расчёте расхода)
+            var last = readingsInMonth[readingsInMonth.length - 1];
+
+            // Значение показаний
+            row.push(last.value);
+
+            // Дата в формате ДД.ММ.ГГГГ
+            var dateStr = last.date;
+            if (dateStr && dateStr.length >= 10) {
+              var parts = dateStr.split("-");
+              dateStr = parts[2] + "." + parts[1] + "." + parts[0];
+            }
+            row.push(dateStr);
+
+            // Расход (если есть)
+            row.push(consumptionValue != null ? consumptionValue : "");
+          }
+        });
+
+        rows.push(row);
+      });
+
+      function esc(value) {
+        if (value == null) return "";
+        var s = String(value);
+        if (s.indexOf('"') !== -1 || s.indexOf(sep) !== -1 || s.indexOf("\n") !== -1) {
+          s = '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      }
+
+      var csv =
+        "\uFEFF" +
+        rows
+          .map(function (row) {
+            return row.map(esc).join(sep);
+          })
+          .join("\r\n");
+
+      var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      var url = URL.createObjectURL(blob);
+
+      var a = document.createElement("a");
+      var periodLabel =
+        (startMonth || "") + "_to_" + (endMonth || "");
+      a.href = url;
+      a.download =
+        "statistics_" +
+        (selectedObject && selectedObject.object_name
+          ? selectedObject.object_name.replace(/[^a-zA-Z0-9_\\-]+/g, "_")
+          : "object") +
+        "_" +
+        periodLabel +
+        ".csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     }
 
     if (step === "select") {
@@ -2461,7 +2598,20 @@
               selectedObject.object_name
             )
           ),
-          React.createElement("span", { className: "badge" }, "Счётчиков: " + statistics.counters.length)
+          React.createElement(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: "8px" } },
+            React.createElement("span", { className: "badge" }, "Счётчиков: " + statistics.counters.length),
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "button-ghost",
+                onClick: handleExportStatisticsToExcel,
+              },
+              "Экспорт в Excel"
+            )
+          )
         ),
         React.createElement("div", { className: "divider" }),
         React.createElement(
@@ -2558,6 +2708,14 @@
                   ),
                   statistics.months.map(function(month) {
                     var readingsInMonth = statistics.data[counter.id][month.key] || [];
+                    var consumptionValue = statistics.consumption &&
+                      statistics.consumption[counter.id] &&
+                      statistics.consumption[counter.id][month.key] != null
+                      ? statistics.consumption[counter.id][month.key]
+                      : null;
+                    var formattedConsumption = consumptionValue != null
+                      ? Number(consumptionValue).toFixed(3)
+                      : null;
                     var formatDate = function(ymd) {
                       if (!ymd || ymd.length < 10) return ymd;
                       var parts = ymd.split("-");
@@ -2579,8 +2737,23 @@
                         ? React.createElement(
                             "div",
                             { style: { display: "flex", flexDirection: "column", gap: "2px" } },
-                            React.createElement("div", { style: { whiteSpace: "nowrap" } }, readingsInMonth.map(function(r) { return r.value; }).join(", ")),
-                            React.createElement("div", { style: { whiteSpace: "nowrap", fontSize: "11px", color: "var(--text-muted)" } }, readingsInMonth.map(function(r) { return formatDate(r.date); }).join(", "))
+                            React.createElement(
+                              "div",
+                              { style: { whiteSpace: "nowrap" } },
+                              readingsInMonth.map(function(r) { return r.value; }).join(", ")
+                            ),
+                            React.createElement(
+                              "div",
+                              { style: { whiteSpace: "nowrap", fontSize: "11px", color: "var(--text-muted)" } },
+                              readingsInMonth.map(function(r) { return formatDate(r.date); }).join(", ")
+                            ),
+                formattedConsumption != null
+                              ? React.createElement(
+                                  "div",
+                                  { style: { whiteSpace: "nowrap", fontSize: "11px", color: "rgba(74, 222, 128, 0.9)" } },
+                                  formattedConsumption
+                                )
+                              : null
                           )
                         : "—"
                     );
@@ -4177,9 +4350,18 @@
     var operators = operatorsState[0];
     var setOperators = operatorsState[1];
 
-    var selectedOperatorState = useState(null); // null = все
-    var selectedOperator = selectedOperatorState[0];
-    var setSelectedOperator = selectedOperatorState[1];
+    var ownersState = useState([]);
+    var owners = ownersState[0];
+    var setOwners = ownersState[1];
+
+    // Карты выбранных операторов и владельцев: { id: true }
+    var selectedOperatorIdsState = useState({});
+    var selectedOperatorIds = selectedOperatorIdsState[0];
+    var setSelectedOperatorIds = selectedOperatorIdsState[1];
+
+    var selectedOwnerIdsState = useState({});
+    var selectedOwnerIds = selectedOwnerIdsState[0];
+    var setSelectedOwnerIds = selectedOwnerIdsState[1];
 
     var objectsState = useState([]);
     var objects = objectsState[0];
@@ -4193,7 +4375,18 @@
     var error = errorState[0];
     var setError = errorState[1];
 
+    // Счётчики по объектам (когда объекты загружены без счётчиков — сценарии 1 и 2)
+    var countersByObjectIdState = useState({});
+    var countersByObjectId = countersByObjectIdState[0];
+    var setCountersByObjectId = countersByObjectIdState[1];
+
+    // Статистика за последние 2 месяца: counterId -> { month1Label, month2Label, month1, month2, consumption1, consumption2, totalConsumption }
+    var twoMonthsStatsState = useState({});
+    var twoMonthsStats = twoMonthsStatsState[0];
+    var setTwoMonthsStats = twoMonthsStatsState[1];
+
     useEffect(function () {
+      // Загружаем операторов
       supabase
         .from("operators")
         .select("id, name, sort_order")
@@ -4202,6 +4395,16 @@
         .then(function (res) {
           if (!res.error && res.data) setOperators(res.data);
         });
+
+      // Загружаем владельцев объектов
+      supabase
+        .from("owners")
+        .select("id, name, sort_order")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(function (res) {
+          if (!res.error && res.data) setOwners(res.data);
+        });
     }, []);
 
     useEffect(function () {
@@ -4209,8 +4412,15 @@
       setError(null);
       setObjects([]);
 
-      if (selectedOperator === null) {
-        // Все операторы — показываем все активные объекты
+      // Получаем списки выбраных ID
+      var activeOperatorIds = Object.keys(selectedOperatorIds).filter(function (id) { return selectedOperatorIds[id]; });
+      var activeOwnerIds = Object.keys(selectedOwnerIds).filter(function (id) { return selectedOwnerIds[id]; });
+
+      var hasOperatorFilter = activeOperatorIds.length > 0;
+      var hasOwnerFilter = activeOwnerIds.length > 0;
+
+      // Сценарий 1: нет фильтров — показываем все объекты
+      if (!hasOperatorFilter && !hasOwnerFilter) {
         supabase
           .from("objects")
           .select("id, object_name, object_address")
@@ -4221,42 +4431,192 @@
             if (res.error) { setError("Ошибка загрузки объектов"); return; }
             setObjects(res.data || []);
           });
-      } else {
-        // Находим все объекты, у которых есть хотя бы один счётчик с выбранным оператором
-        supabase
-          .from("counters")
-          .select("object_id, counter_type, counter_number, objects(id, object_name, object_address, is_active)")
-          .eq("operator_id", selectedOperator.id)
+        return;
+      }
+
+      // Сценарий 2: фильтр только по владельцам
+      if (!hasOperatorFilter && hasOwnerFilter) {
+        var q = supabase
+          .from("objects")
+          .select("id, object_name, object_address, owner_id")
+          .eq("is_active", true);
+
+        q = q.in("owner_id", activeOwnerIds);
+
+        q.order("object_name")
           .then(function (res) {
             setLoading(false);
-            if (res.error) { setError("Ошибка загрузки данных"); return; }
-            var data = res.data || [];
-            // Группируем счётчики по объекту
-            var objMap = {};
-            for (var i = 0; i < data.length; i++) {
-              var row = data[i];
-              if (!row.objects || !row.objects.is_active) continue;
-              var oid = row.objects.id;
-              if (!objMap[oid]) {
-                objMap[oid] = {
-                  id: oid,
-                  object_name: row.objects.object_name,
-                  object_address: row.objects.object_address,
-                  counters: []
-                };
-              }
-              objMap[oid].counters.push({
-                counter_type: row.counter_type,
-                counter_number: row.counter_number
-              });
-            }
-            var result = Object.values(objMap).sort(function(a, b) {
-              return (a.object_name || "").localeCompare(b.object_name || "", "ru");
-            });
-            setObjects(result);
+            if (res.error) { setError("Ошибка загрузки объектов"); return; }
+            setObjects(res.data || []);
           });
+        return;
       }
-    }, [selectedOperator]);
+
+      // Сценарий 3: есть фильтр по операторам (возможно, вместе с владельцами)
+      supabase
+        .from("counters")
+        .select("id, object_id, counter_type, counter_number, objects(id, object_name, object_address, is_active, owner_id)")
+        .in("operator_id", activeOperatorIds)
+        .then(function (res) {
+          setLoading(false);
+          if (res.error) { setError("Ошибка загрузки данных"); return; }
+          var data = res.data || [];
+          // Группируем счётчики по объекту
+          var objMap = {};
+          for (var i = 0; i < data.length; i++) {
+            var row = data[i];
+            if (!row.objects || !row.objects.is_active) continue;
+            // Если есть фильтр по владельцам — применяем его
+            if (hasOwnerFilter) {
+              var ownerIdStr = row.objects.owner_id ? String(row.objects.owner_id) : "";
+              if (activeOwnerIds.indexOf(ownerIdStr) === -1) continue;
+            }
+            var oid = row.objects.id;
+            if (!objMap[oid]) {
+              objMap[oid] = {
+                id: oid,
+                object_name: row.objects.object_name,
+                object_address: row.objects.object_address,
+                counters: []
+              };
+            }
+            objMap[oid].counters.push({
+              id: row.id,
+              counter_type: row.counter_type,
+              counter_number: row.counter_number
+            });
+          }
+          var result = Object.values(objMap).sort(function(a, b) {
+            return (a.object_name || "").localeCompare(b.object_name || "", "ru");
+          });
+          setObjects(result);
+        });
+    }, [selectedOperatorIds, selectedOwnerIds]);
+
+    // Загрузка счётчиков для объектов, у которых их ещё нет (сценарии "все объекты" и "только владельцы")
+    useEffect(function () {
+      if (!objects || objects.length === 0) {
+        setCountersByObjectId({});
+        setTwoMonthsStats({});
+        return;
+      }
+      var hasCounters = objects[0].counters && objects[0].counters.length > 0 && objects[0].counters[0].id;
+      if (hasCounters) {
+        setCountersByObjectId({});
+        loadTwoMonthsReadings(objects);
+        return;
+      }
+      var objectIds = objects.map(function (o) { return o.id; });
+      supabase
+        .from("counters")
+        .select("id, object_id, counter_type, counter_number")
+        .in("object_id", objectIds)
+        .eq("is_active", true)
+        .then(function (res) {
+          if (res.error) return;
+          var list = res.data || [];
+          var byObj = {};
+          for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            var oid = c.object_id;
+            if (!byObj[oid]) byObj[oid] = [];
+            byObj[oid].push({ id: c.id, counter_type: c.counter_type, counter_number: c.counter_number });
+          }
+          setCountersByObjectId(byObj);
+          var allCounters = [];
+          objects.forEach(function (o) {
+            (byObj[o.id] || []).forEach(function (c) { allCounters.push(c); });
+          });
+          loadTwoMonthsReadingsForCounters(allCounters);
+        });
+    }, [objects]);
+
+    function getLastTwoMonthKeys() {
+      var now = new Date();
+      var m2 = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      var m1 = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      var key2 = m2.getFullYear() + "-" + String(m2.getMonth() + 1).padStart(2, "0");
+      var key1 = m1.getFullYear() + "-" + String(m1.getMonth() + 1).padStart(2, "0");
+      var monthNames = { "01": "Янв", "02": "Фев", "03": "Мар", "04": "Апр", "05": "Май", "06": "Июн", "07": "Июл", "08": "Авг", "09": "Сен", "10": "Окт", "11": "Ноя", "12": "Дек" };
+      return [
+        { key: key2, label: monthNames[key2.slice(5, 7)] + " " + key2.slice(0, 4) },
+        { key: key1, label: monthNames[key1.slice(5, 7)] + " " + key1.slice(0, 4) }
+      ];
+    }
+
+    function loadTwoMonthsReadings(objectsWithCounters) {
+      var counterList = [];
+      objectsWithCounters.forEach(function (o) {
+        (o.counters || []).forEach(function (c) { if (c.id) counterList.push(c); });
+      });
+      loadTwoMonthsReadingsForCounters(counterList);
+    }
+
+    function loadTwoMonthsReadingsForCounters(counterList) {
+      if (counterList.length === 0) {
+        setTwoMonthsStats({});
+        return;
+      }
+      var months = getLastTwoMonthKeys();
+      var startDate = months[0].key + "-01";
+      var endYear = parseInt(months[1].key.slice(0, 4), 10);
+      var endMonth = parseInt(months[1].key.slice(5, 7), 10);
+      var nextMonth = endMonth === 12 ? 1 : endMonth + 1;
+      var nextYear = endMonth === 12 ? endYear + 1 : endYear;
+      var endDate = nextYear + "-" + String(nextMonth).padStart(2, "0") + "-01";
+      var counterIds = counterList.map(function (c) { return c.id; });
+
+      supabase
+        .from("meter_readings")
+        .select("counter_id, reading_date, indication")
+        .in("counter_id", counterIds)
+        .gte("reading_date", startDate)
+        .lt("reading_date", endDate)
+        .then(function (res) {
+          if (res.error) { setTwoMonthsStats({}); return; }
+          var readings = res.data || [];
+          var months = getLastTwoMonthKeys();
+          var key1 = months[0].key;
+          var key2 = months[1].key;
+          var byCounter = {};
+          counterIds.forEach(function (cid) {
+            byCounter[cid] = { month1: null, month2: null, consumption1: null, consumption2: null, totalConsumption: null };
+          });
+          readings.forEach(function (r) {
+            var cid = r.counter_id;
+            if (!byCounter[cid]) byCounter[cid] = { month1: null, month2: null, consumption1: null, consumption2: null, totalConsumption: null };
+            var monthKey = r.reading_date.slice(0, 7);
+            var val = r.indication;
+            var date = r.reading_date;
+            if (monthKey === key1) {
+              if (!byCounter[cid].month1 || r.reading_date > byCounter[cid].month1.date) {
+                byCounter[cid].month1 = { value: val, date: date };
+              }
+            } else if (monthKey === key2) {
+              if (!byCounter[cid].month2 || r.reading_date > byCounter[cid].month2.date) {
+                byCounter[cid].month2 = { value: val, date: date };
+              }
+            }
+          });
+          Object.keys(byCounter).forEach(function (cid) {
+            var d = byCounter[cid];
+            if (d.month1 && d.month2) {
+              d.consumption2 = d.month2.value - d.month1.value;
+              d.consumption1 = null;
+              d.totalConsumption = d.consumption2;
+            } else if (d.month1) {
+              d.consumption1 = null;
+              d.consumption2 = null;
+              d.totalConsumption = null;
+            } else if (d.month2) {
+              d.consumption1 = null;
+              d.consumption2 = null;
+              d.totalConsumption = null;
+            }
+          });
+          setTwoMonthsStats(byCounter);
+        });
+    }
 
     return React.createElement(
       "div",
@@ -4272,56 +4632,155 @@
         React.createElement("div", { className: "panel-title" }, "Операторы"),
         React.createElement("div", { className: "panel-subtitle" }, "Просмотр объектов по обслуживающим организациям")
       ),
-      // Кнопки-фильтры операторов
+      // Фильтры операторов
       React.createElement(
         "div",
-        { style: { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" } },
+        { style: { marginBottom: "10px" } },
         React.createElement(
-          "button",
-          {
-            className: selectedOperator === null ? "badge" : "button-ghost",
-            style: {
-              padding: "6px 14px",
-              borderRadius: "20px",
-              cursor: "pointer",
-              fontWeight: selectedOperator === null ? "600" : "normal",
-              background: selectedOperator === null ? "var(--accent)" : "transparent",
-              color: selectedOperator === null ? "#fff" : "var(--text-muted)",
-              border: selectedOperator === null ? "none" : "1px solid rgba(148,163,184,0.3)",
-            },
-            onClick: function () { setSelectedOperator(null); }
-          },
-          "Все"
+          "div",
+          { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" } },
+          "Фильтр по операторам"
         ),
-        operators.map(function (op) {
-          var isActive = selectedOperator && selectedOperator.id === op.id;
-          return React.createElement(
+        React.createElement(
+          "div",
+          { style: { display: "flex", flexWrap: "wrap", gap: "8px" } },
+          React.createElement(
             "button",
             {
-              key: op.id,
+              className: "button-ghost",
               style: {
                 padding: "6px 14px",
                 borderRadius: "20px",
                 cursor: "pointer",
-                fontWeight: isActive ? "600" : "normal",
-                background: isActive ? "var(--accent)" : "transparent",
-                color: isActive ? "#fff" : "var(--text-muted)",
-                border: isActive ? "none" : "1px solid rgba(148,163,184,0.3)",
               },
-              onClick: function () { setSelectedOperator(op); }
+              onClick: function () { setSelectedOperatorIds({}); }
             },
-            op.name
-          );
-        })
+            "Все операторы"
+          ),
+          operators.map(function (op) {
+            var isActive = !!selectedOperatorIds[op.id];
+            return React.createElement(
+              "button",
+              {
+                key: op.id,
+                style: {
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  cursor: "pointer",
+                  fontWeight: isActive ? "600" : "normal",
+                  background: isActive ? "var(--accent)" : "transparent",
+                  color: isActive ? "#fff" : "var(--text-muted)",
+                  border: isActive ? "none" : "1px solid rgba(148,163,184,0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                },
+                onClick: function () {
+                  var updated = {};
+                  for (var key in selectedOperatorIds) updated[key] = selectedOperatorIds[key];
+                  if (updated[op.id]) {
+                    delete updated[op.id];
+                  } else {
+                    updated[op.id] = true;
+                  }
+                  setSelectedOperatorIds(updated);
+                }
+              },
+              React.createElement(
+                "span",
+                {
+                  style: {
+                    width: "10px",
+                    height: "10px",
+                    borderRadius: "3px",
+                    border: "1px solid rgba(148,163,184,0.7)",
+                    background: isActive ? "var(--accent)" : "transparent"
+                  }
+                }
+              ),
+              op.name
+            );
+          })
+        )
+      ),
+      // Фильтры владельцев
+      React.createElement(
+        "div",
+        { style: { marginBottom: "16px" } },
+        React.createElement(
+          "div",
+          { style: { fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" } },
+          "Фильтр по владельцам (собственникам)"
+        ),
+        React.createElement(
+          "div",
+          { style: { display: "flex", flexWrap: "wrap", gap: "8px" } },
+          React.createElement(
+            "button",
+            {
+              className: "button-ghost",
+              style: {
+                padding: "6px 14px",
+                borderRadius: "20px",
+                cursor: "pointer",
+              },
+              onClick: function () { setSelectedOwnerIds({}); }
+            },
+            "Все владельцы"
+          ),
+          owners.map(function (owner) {
+            var isActiveOwner = !!selectedOwnerIds[owner.id];
+            return React.createElement(
+              "button",
+              {
+                key: owner.id,
+                style: {
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  cursor: "pointer",
+                  fontWeight: isActiveOwner ? "600" : "normal",
+                  background: isActiveOwner ? "var(--accent)" : "transparent",
+                  color: isActiveOwner ? "#fff" : "var(--text-muted)",
+                  border: isActiveOwner ? "none" : "1px solid rgba(148,163,184,0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                },
+                onClick: function () {
+                  var updated = {};
+                  for (var key in selectedOwnerIds) updated[key] = selectedOwnerIds[key];
+                  if (updated[owner.id]) {
+                    delete updated[owner.id];
+                  } else {
+                    updated[owner.id] = true;
+                  }
+                  setSelectedOwnerIds(updated);
+                }
+              },
+              React.createElement(
+                "span",
+                {
+                  style: {
+                    width: "10px",
+                    height: "10px",
+                    borderRadius: "3px",
+                    border: "1px solid rgba(148,163,184,0.7)",
+                    background: isActiveOwner ? "var(--accent)" : "transparent"
+                  }
+                }
+              ),
+              owner.name
+            );
+          })
+        )
       ),
       // Заголовок результатов
       React.createElement(
         "div",
         { style: { fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" } },
-        loading ? "Загрузка..." :
-          selectedOperator === null
-            ? "Все активные объекты: " + objects.length
-            : "Объекты оператора «" + selectedOperator.name + "»: " + objects.length
+        loading
+          ? "Загрузка..."
+          : "Найдено объектов: " + objects.length
       ),
       error && React.createElement("div", { className: "alert alert-error", style: { marginBottom: "12px" } },
         React.createElement("div", { className: "alert-text" }, error)
@@ -4330,9 +4789,11 @@
       !loading && objects.length === 0 && !error && React.createElement(
         "div",
         { style: { color: "var(--text-muted)", textAlign: "center", padding: "32px 0", fontSize: "14px" } },
-        selectedOperator ? "У оператора «" + selectedOperator.name + "» нет объектов" : "Нет объектов"
+        "Нет объектов по выбранным фильтрам"
       ),
       objects.map(function (obj) {
+        var countersList = obj.counters && obj.counters.length > 0 ? obj.counters : (countersByObjectId[obj.id] || []);
+        var monthLabels = getLastTwoMonthKeys();
         return React.createElement(
           "div",
           {
@@ -4355,14 +4816,14 @@
             { style: { fontSize: "12px", color: "var(--text-muted)" } },
             obj.object_address || ""
           ),
-          obj.counters && obj.counters.length > 0 && React.createElement(
+          countersList.length > 0 && React.createElement(
             "div",
             { style: { marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "6px" } },
-            obj.counters.map(function (c, idx) {
+            countersList.map(function (c, idx) {
               return React.createElement(
                 "span",
                 {
-                  key: idx,
+                  key: c.id || idx,
                   style: {
                     background: "rgba(59,130,246,0.15)",
                     border: "1px solid rgba(59,130,246,0.3)",
@@ -4376,6 +4837,74 @@
                 c.counter_number ? " · " + c.counter_number : ""
               );
             })
+          ),
+          countersList.length > 0 && React.createElement(
+            "div",
+            { style: { marginTop: "12px", fontSize: "12px" } },
+            React.createElement(
+              "div",
+              { style: { color: "var(--text-muted)", marginBottom: "6px", fontWeight: "600" } },
+              "Последние 2 месяца"
+            ),
+            React.createElement(
+              "div",
+              { style: { overflowX: "auto" } },
+              React.createElement(
+                "table",
+                { style: { width: "100%", borderCollapse: "collapse", fontSize: "11px" } },
+                React.createElement(
+                  "thead",
+                  null,
+                  React.createElement(
+                    "tr",
+                    null,
+                    React.createElement("th", { style: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.3)" } }, "Счётчик"),
+                    React.createElement("th", { style: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.3)" } }, monthLabels[0].label),
+                    React.createElement("th", { style: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.3)" } }, monthLabels[1].label),
+                    React.createElement("th", { style: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.3)" } }, "Итого расход")
+                  )
+                ),
+                React.createElement(
+                  "tbody",
+                  null,
+                  countersList.map(function (c) {
+                    var stats = twoMonthsStats[c.id] || {};
+                    var m1 = stats.month1;
+                    var m2 = stats.month2;
+                    var total = stats.totalConsumption != null ? Number(stats.totalConsumption).toFixed(3) : "—";
+                    var fmt = function (d) {
+                      if (!d || !d.date) return "—";
+                      var p = d.date.split("-");
+                      return (p[2] || "") + "." + (p[1] || "") + "." + (p[0] || "");
+                    };
+                    return React.createElement(
+                      "tr",
+                      { key: c.id },
+                      React.createElement(
+                        "td",
+                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
+                        c.counter_type + (c.counter_number ? " № " + c.counter_number : "")
+                      ),
+                      React.createElement(
+                        "td",
+                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
+                        m1 ? React.createElement("div", null, m1.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m1))) : "—"
+                      ),
+                      React.createElement(
+                        "td",
+                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
+                        m2 ? React.createElement("div", null, m2.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m2))) : "—"
+                      ),
+                      React.createElement(
+                        "td",
+                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)", color: total !== "—" ? "rgba(74,222,128,0.9)" : "inherit" } },
+                        total
+                      )
+                    );
+                  })
+                )
+              )
+            )
           )
         );
       })
