@@ -1,5 +1,4 @@
 // Edge Function: создание пользователя (только для владельца)
-// Вызывается из приложения с JWT текущего пользователя.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -10,7 +9,19 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-/** Normalize Russian phone to +7 and 10 digits, no spaces. Returns null if invalid. */
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
+
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 11 && (digits[0] === "8" || digits[0] === "7")) {
@@ -38,40 +49,41 @@ interface CreateUserBody {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" } });
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Требуется авторизация" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Требуется авторизация" }, 401);
   }
 
   const token = authHeader.slice(7);
   const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(token);
   if (authError || !caller) {
-    return new Response(JSON.stringify({ error: "Неверный или истёкший токен" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Неверный или истёкший токен" }, 401);
   }
 
+  // Ищем сотрудника по email (надёжнее, чем по auth_user_id)
   const { data: callerEmployee, error: empError } = await supabaseAdmin
     .from("employees")
     .select("id, role")
-    .eq("auth_user_id", caller.id)
+    .eq("email", caller.email)
     .eq("is_active", true)
     .maybeSingle();
 
   if (empError || !callerEmployee || callerEmployee.role !== "owner") {
-    return new Response(JSON.stringify({ error: "Доступ только у владельца" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Доступ только у владельца" }, 403);
   }
 
   let body: CreateUserBody;
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Некорректный JSON" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Некорректный JSON" }, 400);
   }
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -88,11 +100,11 @@ serve(async (req: Request) => {
   const notify_via_max = body.notify_via_max === true;
 
   if (!email || !password || !first_name) {
-    return new Response(JSON.stringify({ error: "Укажите email, пароль и имя" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Укажите email, пароль и имя" }, 400);
   }
 
   if (password.length < 6) {
-    return new Response(JSON.stringify({ error: "Пароль не менее 6 символов" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Пароль не менее 6 символов" }, 400);
   }
 
   const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -102,12 +114,11 @@ serve(async (req: Request) => {
   });
 
   if (createError) {
-    const msg = createError.message || "Ошибка создания пользователя";
-    return new Response(JSON.stringify({ error: msg }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: createError.message || "Ошибка создания пользователя" }, 400);
   }
 
   if (!newUser.user) {
-    return new Response(JSON.stringify({ error: "Пользователь не создан" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Пользователь не создан" }, 500);
   }
 
   const { data: newEmployee, error: insertError } = await supabaseAdmin
@@ -130,7 +141,7 @@ serve(async (req: Request) => {
 
   if (insertError || !newEmployee) {
     await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-    return new Response(JSON.stringify({ error: "Ошибка создания записи сотрудника: " + (insertError?.message || "unknown") }), { status: 500, headers: { "Content-Type": "application/json" } });
+    return jsonResponse({ error: "Ошибка создания записи сотрудника: " + (insertError?.message || "unknown") }, 500);
   }
 
   if (object_ids.length > 0 && newEmployee.id) {
@@ -140,8 +151,5 @@ serve(async (req: Request) => {
       .in("id", object_ids);
   }
 
-  return new Response(
-    JSON.stringify({ success: true, message: "Пользователь создан. Передайте ему логин (email) и пароль для входа." }),
-    { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-  );
+  return jsonResponse({ success: true, message: "Пользователь создан. Передайте ему логин (email) и пароль для входа." });
 });

@@ -1,5 +1,4 @@
 // Edge Function: обновление пользователя (только для владельца)
-// Изменение email, пароля, имени, фамилии, роли и назначенных объектов.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -10,7 +9,19 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-/** Normalize Russian phone to +7 and 10 digits, no spaces. Returns null if invalid. */
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
+
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 11 && (digits[0] === "8" || digits[0] === "7")) {
@@ -39,65 +50,41 @@ interface UpdateUserBody {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    });
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Требуется авторизация" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Требуется авторизация" }, 401);
   }
 
   const token = authHeader.slice(7);
-  const {
-    data: { user: caller },
-    error: authError,
-  } = await supabaseAdmin.auth.getUser(token);
+  const { data: { user: caller }, error: authError } = await supabaseAdmin.auth.getUser(token);
   if (authError || !caller) {
-    return new Response(JSON.stringify({ error: "Неверный или истёкший токен" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Неверный или истёкший токен" }, 401);
   }
 
+  // Ищем сотрудника по email (надёжнее, чем по auth_user_id)
   const { data: callerEmployee, error: empError } = await supabaseAdmin
     .from("employees")
     .select("id, role")
-    .eq("auth_user_id", caller.id)
+    .eq("email", caller.email)
     .eq("is_active", true)
     .maybeSingle();
 
   if (empError || !callerEmployee || callerEmployee.role !== "owner") {
-    return new Response(JSON.stringify({ error: "Доступ только у владельца" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Доступ только у владельца" }, 403);
   }
 
   let body: UpdateUserBody;
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Некорректный JSON" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Некорректный JSON" }, 400);
   }
 
   const employee_id =
@@ -107,24 +94,18 @@ serve(async (req: Request) => {
         ? parseInt(body.employee_id, 10)
         : null;
   if (employee_id == null || isNaN(employee_id)) {
-    return new Response(JSON.stringify({ error: "Укажите employee_id" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Укажите employee_id" }, 400);
   }
 
   const { data: employee, error: fetchErr } = await supabaseAdmin
     .from("employees")
-    .select("id, auth_user_id, email, first_name, last_name, role")
+    .select("id, email, first_name, last_name, role")
     .eq("id", employee_id)
     .eq("is_active", true)
     .maybeSingle();
 
   if (fetchErr || !employee) {
-    return new Response(JSON.stringify({ error: "Сотрудник не найден" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Сотрудник не найден" }, 404);
   }
 
   const email = typeof body.email === "string" ? body.email.trim() : null;
@@ -135,10 +116,10 @@ serve(async (req: Request) => {
   const object_ids = Array.isArray(body.object_ids)
     ? body.object_ids.filter((id: unknown) => typeof id === "number")
     : null;
-  const max_id = body.hasOwnProperty("max_id")
+  const max_id = Object.prototype.hasOwnProperty.call(body, "max_id")
     ? (typeof body.max_id === "string" ? (body.max_id.trim() || null) : null)
     : undefined;
-  const phoneRaw = body.hasOwnProperty("phone")
+  const phoneRaw = Object.prototype.hasOwnProperty.call(body, "phone")
     ? (typeof body.phone === "string" ? body.phone.trim() : null)
     : undefined;
   const phone = phoneRaw !== undefined
@@ -146,42 +127,37 @@ serve(async (req: Request) => {
     : undefined;
 
   if (email !== null && !email) {
-    return new Response(JSON.stringify({ error: "Email не может быть пустым" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Email не может быть пустым" }, 400);
   }
   if (password !== null && password.length > 0 && password.length < 6) {
-    return new Response(JSON.stringify({ error: "Пароль не менее 6 символов" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Пароль не менее 6 символов" }, 400);
   }
 
-  // Обновление Auth (email и/или пароль)
-  if (employee.auth_user_id) {
-    if (email !== null && email !== employee.email) {
+  // Обновление пароля через Auth (по email)
+  if (password !== null && password.length >= 6) {
+    const { data: authUser } = await supabaseAdmin.auth.admin.listUsers();
+    const targetAuthUser = authUser?.users?.find((u) => u.email === employee.email);
+    if (targetAuthUser) {
+      const updatePayload: { password?: string; email?: string } = { password };
+      if (email !== null && email !== employee.email) updatePayload.email = email;
+      const { error: updatePwErr } = await supabaseAdmin.auth.admin.updateUserById(
+        targetAuthUser.id,
+        updatePayload
+      );
+      if (updatePwErr) {
+        return jsonResponse({ error: "Ошибка смены пароля: " + (updatePwErr.message || "unknown") }, 400);
+      }
+    }
+  } else if (email !== null && email !== employee.email) {
+    const { data: authUser } = await supabaseAdmin.auth.admin.listUsers();
+    const targetAuthUser = authUser?.users?.find((u) => u.email === employee.email);
+    if (targetAuthUser) {
       const { error: updateEmailErr } = await supabaseAdmin.auth.admin.updateUserById(
-        employee.auth_user_id,
+        targetAuthUser.id,
         { email }
       );
       if (updateEmailErr) {
-        return new Response(
-          JSON.stringify({ error: "Ошибка смены email: " + (updateEmailErr.message || "unknown") }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-    }
-    if (password !== null && password.length >= 6) {
-      const { error: updatePwErr } = await supabaseAdmin.auth.admin.updateUserById(
-        employee.auth_user_id,
-        { password }
-      );
-      if (updatePwErr) {
-        return new Response(
-          JSON.stringify({ error: "Ошибка смены пароля: " + (updatePwErr.message || "unknown") }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
+        return jsonResponse({ error: "Ошибка смены email: " + (updateEmailErr.message || "unknown") }, 400);
       }
     }
   }
@@ -204,14 +180,11 @@ serve(async (req: Request) => {
       .update(employeeUpdate)
       .eq("id", employee_id);
     if (updateEmpErr) {
-      return new Response(
-        JSON.stringify({ error: "Ошибка обновления сотрудника: " + (updateEmpErr.message || "unknown") }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Ошибка обновления сотрудника: " + (updateEmpErr.message || "unknown") }, 500);
     }
   }
 
-  // Назначение объектов: снять со всех, затем назначить выбранные
+  // Назначение объектов
   await supabaseAdmin
     .from("objects")
     .update({ assigned_employee_id: null })
@@ -224,8 +197,5 @@ serve(async (req: Request) => {
       .in("id", object_ids);
   }
 
-  return new Response(
-    JSON.stringify({ success: true, message: "Параметры пользователя сохранены." }),
-    { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-  );
+  return jsonResponse({ success: true, message: "Параметры пользователя сохранены." });
 });
