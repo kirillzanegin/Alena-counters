@@ -1269,15 +1269,9 @@
     var counterLkPasswordState = useState({});
     var counterLkPassword = counterLkPasswordState[0];
     var setCounterLkPassword = counterLkPasswordState[1];
-    var counterLkUrlState = useState({});
-    var counterLkUrl = counterLkUrlState[0];
-    var setCounterLkUrl = counterLkUrlState[1];
-    var counterLkLoginState = useState({});
-    var counterLkLogin = counterLkLoginState[0];
-    var setCounterLkLogin = counterLkLoginState[1];
-    var counterLkPasswordState = useState({});
-    var counterLkPassword = counterLkPasswordState[0];
-    var setCounterLkPassword = counterLkPasswordState[1];
+    var counterLkCommentState = useState({});
+    var counterLkComment = counterLkCommentState[0];
+    var setCounterLkComment = counterLkCommentState[1];
 
     var submittingState = useState(false);
     var submitting = submittingState[0];
@@ -1396,6 +1390,15 @@
       setCounterLkPassword(updated);
     }
 
+    function handleCounterLkCommentChange(type, value) {
+      var updated = {};
+      for (var key in counterLkComment) {
+        updated[key] = counterLkComment[key];
+      }
+      updated[type] = value;
+      setCounterLkComment(updated);
+    }
+
     function handleSubmit(e) {
       e.preventDefault();
       setError(null);
@@ -1457,6 +1460,7 @@
               var lkUrl = counterLkUrl[type];
               var lkLogin = counterLkLogin[type];
               var lkPassword = counterLkPassword[type];
+              var lkComment = counterLkComment[type];
               countersToInsert.push({
                 object_id: newObject.id,
                 counter_type: type,
@@ -1468,6 +1472,7 @@
                 lk_url: lkUrl && lkUrl.trim ? lkUrl.trim() : null,
                 lk_login: lkLogin && lkLogin.trim ? lkLogin.trim() : null,
                 lk_password: lkPassword && lkPassword.trim ? lkPassword.trim() : null,
+                lk_comment: lkComment && lkComment.trim ? lkComment.trim() : null,
                 is_active: true,
               });
             }
@@ -1806,6 +1811,24 @@
                     style: { marginTop: "0" },
                   }),
                   React.createElement(
+                    "select",
+                    {
+                      className: "input",
+                      value: counterOperators[type] || "",
+                      onChange: function (e) { handleCounterOperatorChange(type, e.target.value); },
+                      disabled: submitting,
+                      style: { marginTop: "0" },
+                    },
+                    React.createElement("option", { value: "" }, "Оператор не выбран"),
+                    (props.operators || []).map(function (op) {
+                      return React.createElement(
+                        "option",
+                        { key: op.id, value: op.id },
+                        op.name
+                      );
+                    })
+                  ),
+                  React.createElement(
                     "div",
                     { className: "hint", style: { marginBottom: "0", fontSize: "11px", marginTop: "4px" } },
                     "Вход в личный кабинет"
@@ -1837,24 +1860,15 @@
                     disabled: submitting,
                     style: { marginTop: "0" },
                   }),
-                  React.createElement(
-                    "select",
-                    {
-                      className: "input",
-                      value: counterOperators[type] || "",
-                      onChange: function (e) { handleCounterOperatorChange(type, e.target.value); },
-                      disabled: submitting,
-                      style: { marginTop: "0" },
-                    },
-                    React.createElement("option", { value: "" }, "Оператор не выбран"),
-                    (props.operators || []).map(function (op) {
-                      return React.createElement(
-                        "option",
-                        { key: op.id, value: op.id },
-                        op.name
-                      );
-                    })
-                  ),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Комментарий ЛК (опц.)",
+                    value: counterLkComment[type] || "",
+                    onChange: function (e) { handleCounterLkCommentChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
                   React.createElement(
                     "div",
                     { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
@@ -2948,6 +2962,18 @@
     var counterValidUntilState = useState({});
     var counterValidUntil = counterValidUntilState[0];
     var setCounterValidUntil = counterValidUntilState[1];
+    var counterLkUrlState = useState({});
+    var counterLkUrl = counterLkUrlState[0];
+    var setCounterLkUrl = counterLkUrlState[1];
+    var counterLkLoginState = useState({});
+    var counterLkLogin = counterLkLoginState[0];
+    var setCounterLkLogin = counterLkLoginState[1];
+    var counterLkPasswordState = useState({});
+    var counterLkPassword = counterLkPasswordState[0];
+    var setCounterLkPassword = counterLkPasswordState[1];
+    var counterLkCommentState = useState({});
+    var counterLkComment = counterLkCommentState[0];
+    var setCounterLkComment = counterLkCommentState[1];
 
     var assignedEmployeeIdState = useState("");
     var assignedEmployeeId = assignedEmployeeIdState[0];
@@ -3105,6 +3131,7 @@
           var lkUrlMap = {};
           var lkLoginMap = {};
           var lkPasswordMap = {};
+          var lkCommentMap = {};
           
           for (var i = 0; i < result.data.length; i++) {
             var counter = result.data[i];
@@ -3133,6 +3160,9 @@
             if (counter.lk_password) {
               lkPasswordMap[counter.counter_type] = counter.lk_password;
             }
+            if (counter.lk_comment) {
+              lkCommentMap[counter.counter_type] = counter.lk_comment;
+            }
           }
           
           setSelectedCounters(selected);
@@ -3144,6 +3174,7 @@
           setCounterLkUrl(lkUrlMap);
           setCounterLkLogin(lkLoginMap);
           setCounterLkPassword(lkPasswordMap);
+          setCounterLkComment(lkCommentMap || {});
           setStep("edit");
         })
         .catch(function (err) {
@@ -3213,6 +3244,7 @@
                   lk_url: counterLkUrl[counterType] ? counterLkUrl[counterType].trim() : null,
                   lk_login: counterLkLogin[counterType] ? counterLkLogin[counterType].trim() : null,
                   lk_password: counterLkPassword[counterType] ? counterLkPassword[counterType].trim() : null,
+                  lk_comment: counterLkComment[counterType] ? counterLkComment[counterType].trim() : null,
                   is_active: true
                 };
                 counterPromises.push(
@@ -3236,9 +3268,11 @@
                 var oldLkLogin = existingCounter.lk_login || null;
                 var newLkPassword = counterLkPassword[counterType] ? counterLkPassword[counterType].trim() : null;
                 var oldLkPassword = existingCounter.lk_password || null;
+                var newLkComment = counterLkComment[counterType] ? counterLkComment[counterType].trim() : null;
+                var oldLkComment = existingCounter.lk_comment || null;
                 var wasActive = existingCounter.is_active !== false;
                 
-                if (!wasActive || newNumber !== oldNumber || newComment !== oldComment || newOp !== oldOp || newVerif !== oldVerif || newValid !== oldValid || newLkUrl !== oldLkUrl || newLkLogin !== oldLkLogin || newLkPassword !== oldLkPassword) {
+                if (!wasActive || newNumber !== oldNumber || newComment !== oldComment || newOp !== oldOp || newVerif !== oldVerif || newValid !== oldValid || newLkUrl !== oldLkUrl || newLkLogin !== oldLkLogin || newLkPassword !== oldLkPassword || newLkComment !== oldLkComment) {
                   counterPromises.push(
                     supabase
                       .from("counters")
@@ -3251,6 +3285,7 @@
                         lk_url: newLkUrl,
                         lk_login: newLkLogin,
                         lk_password: newLkPassword,
+                        lk_comment: newLkComment,
                         is_active: true
                       })
                       .eq("id", existingCounter.id)
@@ -4054,6 +4089,75 @@
                       React.createElement(
                         "div",
                         { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
+                        "Вход в личный кабинет"
+                      ),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "text",
+                        placeholder: "Ссылка на ЛК (опц.)",
+                        value: counterLkUrl[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterLkUrl) {
+                            updated[key] = counterLkUrl[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterLkUrl(updated);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "text",
+                        placeholder: "Логин ЛК (опц.)",
+                        value: counterLkLogin[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterLkLogin) {
+                            updated[key] = counterLkLogin[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterLkLogin(updated);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "text",
+                        placeholder: "Пароль ЛК (опц.)",
+                        value: counterLkPassword[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterLkPassword) {
+                            updated[key] = counterLkPassword[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterLkPassword(updated);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement("input", {
+                        className: "input",
+                        type: "text",
+                        placeholder: "Комментарий ЛК (опц.)",
+                        value: counterLkComment[type] || "",
+                        onChange: function (e) {
+                          var updated = {};
+                          for (var key in counterLkComment) {
+                            updated[key] = counterLkComment[key];
+                          }
+                          updated[type] = e.target.value;
+                          setCounterLkComment(updated);
+                        },
+                        disabled: submitting,
+                        style: { fontSize: "12px" }
+                      }),
+                      React.createElement(
+                        "div",
+                        { className: "hint", style: { marginBottom: "0", fontSize: "11px" } },
                         "Дата поверки"
                       ),
                       React.createElement("input", {
@@ -4494,6 +4598,9 @@
     var twoMonthsStatsState = useState({});
     var twoMonthsStats = twoMonthsStatsState[0];
     var setTwoMonthsStats = twoMonthsStatsState[1];
+    var expandedCountersState = useState({});
+    var expandedCounters = expandedCountersState[0];
+    var setExpandedCounters = expandedCountersState[1];
 
     useEffect(function () {
       // Загружаем операторов
@@ -4565,7 +4672,7 @@
       // Сценарий 3: есть фильтр по операторам (возможно, вместе с владельцами)
       supabase
         .from("counters")
-        .select("id, object_id, counter_type, counter_number, objects(id, object_name, object_address, is_active, owner_id)")
+        .select("id, object_id, counter_type, counter_number, lk_url, lk_login, lk_password, lk_comment, objects(id, object_name, object_address, is_active, owner_id)")
         .in("operator_id", activeOperatorIds)
         .then(function (res) {
           setLoading(false);
@@ -4593,7 +4700,11 @@
             objMap[oid].counters.push({
               id: row.id,
               counter_type: row.counter_type,
-              counter_number: row.counter_number
+              counter_number: row.counter_number,
+              lk_url: row.lk_url,
+              lk_login: row.lk_login,
+              lk_password: row.lk_password,
+              lk_comment: row.lk_comment
             });
           }
           var result = Object.values(objMap).sort(function(a, b) {
@@ -4619,7 +4730,7 @@
       var objectIds = objects.map(function (o) { return o.id; });
       supabase
         .from("counters")
-        .select("id, object_id, counter_type, counter_number")
+        .select("id, object_id, counter_type, counter_number, lk_url, lk_login, lk_password, lk_comment")
         .in("object_id", objectIds)
         .eq("is_active", true)
         .then(function (res) {
@@ -4630,7 +4741,15 @@
             var c = list[i];
             var oid = c.object_id;
             if (!byObj[oid]) byObj[oid] = [];
-            byObj[oid].push({ id: c.id, counter_type: c.counter_type, counter_number: c.counter_number });
+            byObj[oid].push({
+              id: c.id,
+              counter_type: c.counter_type,
+              counter_number: c.counter_number,
+              lk_url: c.lk_url,
+              lk_login: c.lk_login,
+              lk_password: c.lk_password,
+              lk_comment: c.lk_comment
+            });
           }
           setCountersByObjectId(byObj);
           var allCounters = [];
@@ -4982,34 +5101,153 @@
                     var m1 = stats.month1;
                     var m2 = stats.month2;
                     var total = stats.totalConsumption != null ? Number(stats.totalConsumption).toFixed(3) : "—";
+                    var isExpanded = !!expandedCounters[c.id];
+                    var hasLkData = !!(c.lk_url || c.lk_login || c.lk_password || c.lk_comment);
                     var fmt = function (d) {
                       if (!d || !d.date) return "—";
                       var p = d.date.split("-");
                       return (p[2] || "") + "." + (p[1] || "") + "." + (p[0] || "");
                     };
                     return React.createElement(
-                      "tr",
+                      React.Fragment,
                       { key: c.id },
                       React.createElement(
-                        "td",
-                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
-                        c.counter_type + (c.counter_number ? " № " + c.counter_number : "")
+                        "tr",
+                        null,
+                        React.createElement(
+                          "td",
+                          { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)", whiteSpace: "nowrap" } },
+                          hasLkData ? React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              onClick: function () {
+                                var next = {};
+                                for (var key in expandedCounters) next[key] = expandedCounters[key];
+                                next[c.id] = !expandedCounters[c.id];
+                                setExpandedCounters(next);
+                              },
+                              style: {
+                                marginRight: "6px",
+                                background: "transparent",
+                                border: "none",
+                                color: "var(--text-muted)",
+                                cursor: "pointer"
+                              }
+                            },
+                            isExpanded ? "▾" : "▸"
+                          ) : React.createElement("span", { style: { display: "inline-block", width: "18px", marginRight: "6px" } }),
+                          c.counter_type + (c.counter_number ? " № " + c.counter_number : "")
+                        ),
+                        React.createElement(
+                          "td",
+                          { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
+                          m1 ? React.createElement("div", null, m1.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m1))) : "—"
+                        ),
+                        React.createElement(
+                          "td",
+                          { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
+                          m2 ? React.createElement("div", null, m2.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m2))) : "—"
+                        ),
+                        React.createElement(
+                          "td",
+                          { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)", color: total !== "—" ? "rgba(74,222,128,0.9)" : "inherit" } },
+                          total
+                        )
                       ),
-                      React.createElement(
-                        "td",
-                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
-                        m1 ? React.createElement("div", null, m1.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m1))) : "—"
-                      ),
-                      React.createElement(
-                        "td",
-                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)" } },
-                        m2 ? React.createElement("div", null, m2.value, React.createElement("div", { style: { fontSize: "10px", color: "var(--text-muted)" } }, fmt(m2))) : "—"
-                      ),
-                      React.createElement(
-                        "td",
-                        { style: { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.15)", color: total !== "—" ? "rgba(74,222,128,0.9)" : "inherit" } },
-                        total
-                      )
+                      isExpanded && hasLkData &&
+                        React.createElement(
+                          "tr",
+                          null,
+                          React.createElement(
+                            "td",
+                            {
+                              colSpan: 4,
+                              style: {
+                                padding: "8px 8px 10px 32px",
+                                borderBottom: "1px solid rgba(148,163,184,0.15)",
+                                background: "rgba(15,23,42,0.7)"
+                              }
+                            },
+                            React.createElement(
+                              "div",
+                              { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+                              React.createElement(
+                                "div",
+                                { style: { fontSize: "11px", color: "var(--text-muted)" } },
+                                "Вход в личный кабинет"
+                              ),
+                              React.createElement(
+                                "div",
+                                { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "6px" } },
+                                React.createElement(
+                                  "div",
+                                  null,
+                                  React.createElement(
+                                    "div",
+                                    { style: { fontSize: "10px", color: "var(--text-muted)", marginBottom: "2px" } },
+                                    "Ссылка"
+                                  ),
+                                  React.createElement("input", {
+                                    className: "input",
+                                    type: "text",
+                                    readOnly: true,
+                                    value: c.lk_url || "",
+                                    style: { fontSize: "11px", opacity: c.lk_url ? 1 : 0.5 }
+                                  })
+                                ),
+                                React.createElement(
+                                  "div",
+                                  null,
+                                  React.createElement(
+                                    "div",
+                                    { style: { fontSize: "10px", color: "var(--text-muted)", marginBottom: "2px" } },
+                                    "Логин"
+                                  ),
+                                  React.createElement("input", {
+                                    className: "input",
+                                    type: "text",
+                                    readOnly: true,
+                                    value: c.lk_login || "",
+                                    style: { fontSize: "11px", opacity: c.lk_login ? 1 : 0.5 }
+                                  })
+                                ),
+                                React.createElement(
+                                  "div",
+                                  null,
+                                  React.createElement(
+                                    "div",
+                                    { style: { fontSize: "10px", color: "var(--text-muted)", marginBottom: "2px" } },
+                                    "Пароль"
+                                  ),
+                                  React.createElement("input", {
+                                    className: "input",
+                                    type: "text",
+                                    readOnly: true,
+                                    value: c.lk_password || "",
+                                    style: { fontSize: "11px", opacity: c.lk_password ? 1 : 0.5 }
+                                  })
+                                )
+                              ),
+                              React.createElement(
+                                "div",
+                                { style: { marginTop: "6px" } },
+                                React.createElement(
+                                  "div",
+                                  { style: { fontSize: "10px", color: "var(--text-muted)", marginBottom: "2px" } },
+                                  "Комментарий"
+                                ),
+                                React.createElement("input", {
+                                  className: "input",
+                                  type: "text",
+                                  readOnly: true,
+                                  value: c.lk_comment || "",
+                                  style: { fontSize: "11px", opacity: c.lk_comment ? 1 : 0.5 }
+                                })
+                              )
+                            )
+                          )
+                        )
                     );
                   })
                 )
