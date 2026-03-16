@@ -1260,6 +1260,24 @@
     var counterValidUntilState = useState({});
     var counterValidUntil = counterValidUntilState[0];
     var setCounterValidUntil = counterValidUntilState[1];
+    var counterLkUrlState = useState({});
+    var counterLkUrl = counterLkUrlState[0];
+    var setCounterLkUrl = counterLkUrlState[1];
+    var counterLkLoginState = useState({});
+    var counterLkLogin = counterLkLoginState[0];
+    var setCounterLkLogin = counterLkLoginState[1];
+    var counterLkPasswordState = useState({});
+    var counterLkPassword = counterLkPasswordState[0];
+    var setCounterLkPassword = counterLkPasswordState[1];
+    var counterLkUrlState = useState({});
+    var counterLkUrl = counterLkUrlState[0];
+    var setCounterLkUrl = counterLkUrlState[1];
+    var counterLkLoginState = useState({});
+    var counterLkLogin = counterLkLoginState[0];
+    var setCounterLkLogin = counterLkLoginState[1];
+    var counterLkPasswordState = useState({});
+    var counterLkPassword = counterLkPasswordState[0];
+    var setCounterLkPassword = counterLkPasswordState[1];
 
     var submittingState = useState(false);
     var submitting = submittingState[0];
@@ -1351,6 +1369,33 @@
       setCounterValidUntil(updated);
     }
 
+    function handleCounterLkUrlChange(type, value) {
+      var updated = {};
+      for (var key in counterLkUrl) {
+        updated[key] = counterLkUrl[key];
+      }
+      updated[type] = value;
+      setCounterLkUrl(updated);
+    }
+
+    function handleCounterLkLoginChange(type, value) {
+      var updated = {};
+      for (var key in counterLkLogin) {
+        updated[key] = counterLkLogin[key];
+      }
+      updated[type] = value;
+      setCounterLkLogin(updated);
+    }
+
+    function handleCounterLkPasswordChange(type, value) {
+      var updated = {};
+      for (var key in counterLkPassword) {
+        updated[key] = counterLkPassword[key];
+      }
+      updated[type] = value;
+      setCounterLkPassword(updated);
+    }
+
     function handleSubmit(e) {
       e.preventDefault();
       setError(null);
@@ -1409,6 +1454,9 @@
               var counterOperator = counterOperators[type];
               var verificationDate = counterVerificationDates[type];
               var validUntilDate = counterValidUntil[type];
+              var lkUrl = counterLkUrl[type];
+              var lkLogin = counterLkLogin[type];
+              var lkPassword = counterLkPassword[type];
               countersToInsert.push({
                 object_id: newObject.id,
                 counter_type: type,
@@ -1417,6 +1465,9 @@
                 verification_date: verificationDate && verificationDate.trim() ? verificationDate.trim() : null,
                 valid_until: validUntilDate && validUntilDate.trim() ? validUntilDate.trim() : null,
                 operator_id: counterOperator && counterOperator.trim ? counterOperator.trim() : null,
+                lk_url: lkUrl && lkUrl.trim ? lkUrl.trim() : null,
+                lk_login: lkLogin && lkLogin.trim ? lkLogin.trim() : null,
+                lk_password: lkPassword && lkPassword.trim ? lkPassword.trim() : null,
                 is_active: true,
               });
             }
@@ -1751,6 +1802,38 @@
                     placeholder: "Комментарий (опц.)",
                     value: counterComments[type] || "",
                     onChange: function (e) { handleCounterCommentChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement(
+                    "div",
+                    { className: "hint", style: { marginBottom: "0", fontSize: "11px", marginTop: "4px" } },
+                    "Вход в личный кабинет"
+                  ),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Ссылка на ЛК (опц.)",
+                    value: counterLkUrl[type] || "",
+                    onChange: function (e) { handleCounterLkUrlChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Логин ЛК (опц.)",
+                    value: counterLkLogin[type] || "",
+                    onChange: function (e) { handleCounterLkLoginChange(type, e.target.value); },
+                    disabled: submitting,
+                    style: { marginTop: "0" },
+                  }),
+                  React.createElement("input", {
+                    className: "input",
+                    type: "text",
+                    placeholder: "Пароль ЛК (опц.)",
+                    value: counterLkPassword[type] || "",
+                    onChange: function (e) { handleCounterLkPasswordChange(type, e.target.value); },
                     disabled: submitting,
                     style: { marginTop: "0" },
                   }),
@@ -3019,6 +3102,9 @@
           var operatorsMap = {};
           var verificationMap = {};
           var validUntilMap = {};
+          var lkUrlMap = {};
+          var lkLoginMap = {};
+          var lkPasswordMap = {};
           
           for (var i = 0; i < result.data.length; i++) {
             var counter = result.data[i];
@@ -3038,6 +3124,15 @@
             if (counter.valid_until) {
               validUntilMap[counter.counter_type] = counter.valid_until;
             }
+            if (counter.lk_url) {
+              lkUrlMap[counter.counter_type] = counter.lk_url;
+            }
+            if (counter.lk_login) {
+              lkLoginMap[counter.counter_type] = counter.lk_login;
+            }
+            if (counter.lk_password) {
+              lkPasswordMap[counter.counter_type] = counter.lk_password;
+            }
           }
           
           setSelectedCounters(selected);
@@ -3046,6 +3141,9 @@
           setCounterOperators(operatorsMap);
           setCounterVerificationDates(verificationMap);
           setCounterValidUntil(validUntilMap);
+          setCounterLkUrl(lkUrlMap);
+          setCounterLkLogin(lkLoginMap);
+          setCounterLkPassword(lkPasswordMap);
           setStep("edit");
         })
         .catch(function (err) {
@@ -3112,6 +3210,9 @@
                   operator_id: counterOperators[counterType] ? counterOperators[counterType].trim() : null,
                   verification_date: counterVerificationDates[counterType] || null,
                   valid_until: counterValidUntil[counterType] || null,
+                  lk_url: counterLkUrl[counterType] ? counterLkUrl[counterType].trim() : null,
+                  lk_login: counterLkLogin[counterType] ? counterLkLogin[counterType].trim() : null,
+                  lk_password: counterLkPassword[counterType] ? counterLkPassword[counterType].trim() : null,
                   is_active: true
                 };
                 counterPromises.push(
@@ -3129,9 +3230,15 @@
                 var oldVerif = existingCounter.verification_date || null;
                 var newValid = counterValidUntil[counterType] || null;
                 var oldValid = existingCounter.valid_until || null;
+                var newLkUrl = counterLkUrl[counterType] ? counterLkUrl[counterType].trim() : null;
+                var oldLkUrl = existingCounter.lk_url || null;
+                var newLkLogin = counterLkLogin[counterType] ? counterLkLogin[counterType].trim() : null;
+                var oldLkLogin = existingCounter.lk_login || null;
+                var newLkPassword = counterLkPassword[counterType] ? counterLkPassword[counterType].trim() : null;
+                var oldLkPassword = existingCounter.lk_password || null;
                 var wasActive = existingCounter.is_active !== false;
                 
-                if (!wasActive || newNumber !== oldNumber || newComment !== oldComment || newOp !== oldOp || newVerif !== oldVerif || newValid !== oldValid) {
+                if (!wasActive || newNumber !== oldNumber || newComment !== oldComment || newOp !== oldOp || newVerif !== oldVerif || newValid !== oldValid || newLkUrl !== oldLkUrl || newLkLogin !== oldLkLogin || newLkPassword !== oldLkPassword) {
                   counterPromises.push(
                     supabase
                       .from("counters")
@@ -3141,6 +3248,9 @@
                         operator_id: newOp,
                         verification_date: newVerif,
                         valid_until: newValid,
+                        lk_url: newLkUrl,
+                        lk_login: newLkLogin,
+                        lk_password: newLkPassword,
                         is_active: true
                       })
                       .eq("id", existingCounter.id)
