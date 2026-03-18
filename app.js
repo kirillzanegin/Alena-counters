@@ -7554,25 +7554,27 @@
 
     useEffect(function () {
       setTgLinked(!!props.employee.tg_id);
-      setCheckingStatus(true);
       supabase
         .from("employees")
         .select("tg_id")
         .eq("id", props.employee.id)
         .single()
         .then(function (result) {
-          setCheckingStatus(false);
           if (result.data && result.data.tg_id) {
             props.employee.tg_id = result.data.tg_id;
             setTgLinked(true);
           } else {
             setTgLinked(false);
+            generateLinkToken();
           }
         })
         .catch(function (err) {
           console.error("Error refreshing tg_id:", err);
-          setCheckingStatus(false);
-          setTgLinked(!!props.employee.tg_id);
+          if (!props.employee.tg_id) {
+            generateLinkToken();
+          } else {
+            setTgLinked(true);
+          }
         });
     }, []);
 
@@ -7635,28 +7637,25 @@
       var expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 1);
 
-      console.log("🔑 Generating token:", token);
-      console.log("⏰ Expires at:", expiresAt.toISOString());
-      console.log("👤 Employee ID:", props.employee.id);
-
       supabase
-        .from("employees")
-        .update({
-          link_token: token,
-          link_expires_at: expiresAt.toISOString(),
+        .rpc("save_link_token", {
+          p_employee_id: props.employee.id,
+          p_token: token,
+          p_expires_at: expiresAt.toISOString(),
         })
-        .eq("id", props.employee.id)
         .then(function (result) {
-          console.log("📝 Update result:", result);
-          
           if (result.error) {
-            console.error("❌ Error updating employee:", result.error);
             setError("Не удалось создать токен привязки: " + result.error.message);
             setLoading(false);
             return;
           }
 
-          console.log("✅ Token saved successfully:", token);
+          if (result.data === false) {
+            setError("Нет прав для сохранения токена. Обратитесь к администратору.");
+            setLoading(false);
+            return;
+          }
+
           setLinkToken(token);
           setLoading(false);
           startCheckingStatus();
@@ -7755,137 +7754,21 @@
             "div",
             null,
             React.createElement(
-              "div",
-              { className: "hint", style: { marginBottom: "16px" } },
-              "Привяжите свой Telegram аккаунт для получения уведомлений о системных событиях."
-            ),
-            !linkToken
-              ? React.createElement(
-                  "button",
-                  {
-                    className: "button",
-                    onClick: generateLinkToken,
-                    disabled: loading,
-                  },
-                  loading ? "Генерация..." : "📱 Привязать Telegram"
-                )
-              : React.createElement(
-                  "div",
-                  null,
-                  React.createElement(
-                    "div",
-                    {
-                      className: "alert alert-success",
-                      style: { marginBottom: "16px" },
-                    },
-                    React.createElement("div", { className: "alert-icon" }, "✓"),
-                    React.createElement(
-                      "div",
-                      { className: "alert-body" },
-                      React.createElement(
-                        "div",
-                        { className: "alert-title" },
-                        "Токен сгенерирован"
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "alert-text" },
-                        "Токен действителен в течение 1 часа"
-                      )
-                    )
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "field-label" },
-                    "Шаг 1: Перейдите в бота"
-                  ),
-                  React.createElement(
-                    "a",
-                    {
-                      href: deepLink,
-                      target: "_blank",
-                      rel: "noopener noreferrer",
-                      className: "button",
-                      style: {
-                        display: "inline-block",
-                        textDecoration: "none",
-                        marginBottom: "16px",
-                      },
-                    },
-                    "Открыть @money_cheking_bot"
-                  ),
-                  React.createElement("div", { className: "divider" }),
-                  React.createElement(
-                    "div",
-                    { className: "field-label" },
-                    "Шаг 2: Отправьте команду в боте"
-                  ),
-                  React.createElement(
-                    "div",
-                    {
-                      className: "hint",
-                      style: { marginBottom: "8px" },
-                    },
-                    "Бот автоматически запустится с нужным токеном. Если нет — скопируйте команду ниже:"
-                  ),
-                  React.createElement(
-                    "div",
-                    {
-                      style: {
-                        background: "rgba(255,255,255,0.05)",
-                        padding: "12px",
-                        borderRadius: "6px",
-                        fontFamily: "monospace",
-                        fontSize: "13px",
-                        wordBreak: "break-all",
-                        marginBottom: "16px",
-                      },
-                    },
-                    "/start " + linkToken
-                  ),
-                  React.createElement("div", { className: "divider" }),
-                  checkingStatus
-                    ? React.createElement(
-                        "div",
-                        null,
-                        React.createElement(
-                          "div",
-                          {
-                            className: "alert alert-success",
-                            style: { marginTop: "12px" },
-                          },
-                          React.createElement("div", { className: "alert-icon" }, "⏳"),
-                          React.createElement(
-                            "div",
-                            { className: "alert-body" },
-                            React.createElement(
-                              "div",
-                              { className: "alert-title" },
-                              "Ожидание привязки..."
-                            ),
-                            React.createElement(
-                              "div",
-                              { className: "alert-text" },
-                              "Проверяем статус каждые 3 секунды. После успешной привязки в Telegram страница автоматически обновится."
-                            )
-                          )
-                        ),
-                        React.createElement(
-                          "button",
-                          {
-                            className: "button button-secondary",
-                            onClick: stopCheckingStatus,
-                            style: { marginTop: "12px" },
-                          },
-                          "⏸ Остановить проверку"
-                        )
-                      )
-                    : React.createElement(
-                        "div",
-                        { className: "hint" },
-                        "После отправки команды в боте страница автоматически обновится через несколько секунд."
-                      )
-                )
+              "a",
+              {
+                href: deepLink || "https://t.me/money_cheking_bot",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                className: "button",
+                style: {
+                  display: "inline-block",
+                  textDecoration: "none",
+                  opacity: loading ? 0.6 : 1,
+                  pointerEvents: loading ? "none" : "auto",
+                },
+              },
+              "Открыть @money_cheking_bot"
+            )
           )
         : React.createElement(
             "div",
