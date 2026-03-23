@@ -133,10 +133,12 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Пароль не менее 6 символов" }, 400);
   }
 
-  // Обновление пароля через Auth (по email)
+  // Обновление пароля через Auth (по email, без учёта регистра)
   if (password !== null && password.length >= 6) {
     const { data: authUser } = await supabaseAdmin.auth.admin.listUsers();
-    const targetAuthUser = authUser?.users?.find((u) => u.email === employee.email);
+    const targetAuthUser = authUser?.users?.find(
+      (u) => u.email?.toLowerCase() === employee.email?.toLowerCase()
+    );
     if (targetAuthUser) {
       const updatePayload: { password?: string; email?: string } = { password };
       if (email !== null && email !== employee.email) updatePayload.email = email;
@@ -150,7 +152,9 @@ serve(async (req: Request) => {
     }
   } else if (email !== null && email !== employee.email) {
     const { data: authUser } = await supabaseAdmin.auth.admin.listUsers();
-    const targetAuthUser = authUser?.users?.find((u) => u.email === employee.email);
+    const targetAuthUser = authUser?.users?.find(
+      (u) => u.email?.toLowerCase() === employee.email?.toLowerCase()
+    );
     if (targetAuthUser) {
       const { error: updateEmailErr } = await supabaseAdmin.auth.admin.updateUserById(
         targetAuthUser.id,

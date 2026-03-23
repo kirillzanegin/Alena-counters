@@ -86,7 +86,7 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Некорректный JSON" }, 400);
   }
 
-  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
   const first_name = typeof body.first_name === "string" ? body.first_name.trim() : "";
   const last_name = typeof body.last_name === "string" ? body.last_name.trim() : null;

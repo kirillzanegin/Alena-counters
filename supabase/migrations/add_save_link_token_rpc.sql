@@ -3,7 +3,7 @@
 -- обновляет только link_token и link_expires_at, только для своей строки.
 
 CREATE OR REPLACE FUNCTION save_link_token(
-  p_employee_id integer,
+  p_employee_id bigint,
   p_token        text,
   p_expires_at   timestamptz
 )

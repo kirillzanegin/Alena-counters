@@ -131,22 +131,24 @@
 
     function fetchEmployeeForUser(user, autoBindTelegramId) {
       if (!supabase || !user) return Promise.resolve(null);
+
+      // Используем SECURITY DEFINER RPC: ищет по auth_user_id, потом по email без учёта
+      // регистра, и автоматически исправляет auth_user_id если нашёл по email.
       return supabase
-        .from("employees")
-        .select("id, first_name, last_name, is_active, tg_id, role")
-        .eq("auth_user_id", user.id)
-        .maybeSingle()
+        .rpc("get_employee_for_auth_user")
         .then(function (result) {
           if (result.error) {
             console.error(result.error);
             setError("Не удалось загрузить данные сотрудника.");
             return null;
           }
-          var emp = result.data;
-          
+          var rows = result.data;
+          var emp = rows && rows.length > 0 ? rows[0] : null;
+
+          if (!emp) return null;
+
           // Автоматическая привязка Telegram ID при входе из Telegram WebApp
-          if (emp && autoBindTelegramId && !emp.tg_id) {
-            // Сначала проверяем, не привязан ли уже этот Telegram ID к другому пользователю
+          if (autoBindTelegramId && !emp.tg_id) {
             return supabase
               .from("employees")
               .select("id, first_name, last_name, email")
@@ -155,20 +157,16 @@
               .maybeSingle()
               .then(function (checkResult) {
                 if (checkResult.data) {
-                  // Telegram уже привязан к другому пользователю
                   var otherUser = checkResult.data;
-                  var otherUserName = otherUser.first_name 
+                  var otherUserName = otherUser.first_name
                     ? (otherUser.first_name + " " + (otherUser.last_name || "")).trim()
                     : otherUser.email;
-                  
                   setError(
                     "⚠️ Этот Telegram аккаунт уже привязан к другому пользователю (" + otherUserName + "). " +
                     "Сначала отвяжите его в веб-приложении или обратитесь к администратору."
                   );
-                  return emp; // Возвращаем сотрудника без привязки
+                  return emp;
                 }
-                
-                // Telegram ID свободен, привязываем
                 return supabase
                   .from("employees")
                   .update({ tg_id: String(autoBindTelegramId) })
@@ -184,7 +182,7 @@
                   });
               });
           }
-          
+
           return emp;
         });
     }
@@ -205,7 +203,6 @@
         .signInWithPassword({ email: email, password: password })
         .then(function (result) {
           if (result.error || !result.data.session || !result.data.session.user) {
-            console.error(result.error);
             setError("Не удалось войти. Проверьте email и пароль.");
             return;
           }
