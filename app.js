@@ -519,6 +519,14 @@
             props.onNavigate("stats");
           },
         }),
+        React.createElement(MenuTile, {
+          icon: "📋",
+          title: "Дашборд",
+          description: "Статус заполнения показаний за текущий месяц",
+          onClick: function () {
+            props.onNavigate("dashboard");
+          },
+        }),
         role === "owner" && React.createElement(MenuTile, {
           icon: "🏭",
           title: "Операторы",
@@ -548,6 +556,518 @@
   }
 
   // ---------- ЭКРАНЫ-ЗАГЛУШКИ ----------
+
+  function DashboardScreen(props) {
+    var loadingState = useState(false);
+    var loading = loadingState[0];
+    var setLoading = loadingState[1];
+
+    var errorState = useState(null);
+    var error = errorState[0];
+    var setError = errorState[1];
+
+    var dashboardRowsState = useState([]);
+    var dashboardRows = dashboardRowsState[0];
+    var setDashboardRows = dashboardRowsState[1];
+
+    var onlyIncompleteState = useState(false);
+    var onlyIncomplete = onlyIncompleteState[0];
+    var setOnlyIncomplete = onlyIncompleteState[1];
+
+    var sortModeState = useState("name");
+    var sortMode = sortModeState[0];
+    var setSortMode = sortModeState[1];
+
+    var selectedMonthState = useState(getCurrentMonthKey());
+    var selectedMonth = selectedMonthState[0];
+    var setSelectedMonth = selectedMonthState[1];
+
+    var monthTitleState = useState(getMonthTitle(getCurrentMonthKey()));
+    var monthTitle = monthTitleState[0];
+    var setMonthTitle = monthTitleState[1];
+
+    useEffect(function () {
+      loadDashboard();
+    }, [selectedMonth]);
+
+    function getCurrentMonthKey() {
+      var now = new Date();
+      return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    }
+
+    function getMonthTitle(monthKey) {
+      var parts = (monthKey || "").split("-");
+      var year = parts[0];
+      var month = parts[1];
+      var monthNames = {
+        "01": "Январь", "02": "Февраль", "03": "Март", "04": "Апрель",
+        "05": "Май", "06": "Июнь", "07": "Июль", "08": "Август",
+        "09": "Сентябрь", "10": "Октябрь", "11": "Ноябрь", "12": "Декабрь"
+      };
+      if (!monthNames[month] || !year) return "выбранный месяц";
+      return monthNames[month] + " " + year;
+    }
+
+    function getMonthRange(monthKey) {
+      var parts = monthKey.split("-");
+      var year = parseInt(parts[0], 10);
+      var monthNum = parseInt(parts[1], 10);
+      var month = String(monthNum).padStart(2, "0");
+      var monthStart = year + "-" + month + "-01";
+      var nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+      var nextYear = monthNum === 12 ? year + 1 : year;
+      var monthEnd = nextYear + "-" + String(nextMonthNum).padStart(2, "0") + "-01";
+      return { monthStart: monthStart, monthEnd: monthEnd };
+    }
+
+    function buildSortedCounters(counters) {
+      var list = counters.slice();
+      if (props.counterTypes && props.counterTypes.length) {
+        var orderMap = {};
+        for (var i = 0; i < props.counterTypes.length; i++) {
+          orderMap[props.counterTypes[i]] = i;
+        }
+        list.sort(function (a, b) {
+          var ia = Object.prototype.hasOwnProperty.call(orderMap, a.counter_type) ? orderMap[a.counter_type] : 9999;
+          var ib = Object.prototype.hasOwnProperty.call(orderMap, b.counter_type) ? orderMap[b.counter_type] : 9999;
+          if (ia !== ib) return ia - ib;
+          var nameA = (a.counter_type || "").toLowerCase();
+          var nameB = (b.counter_type || "").toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+      } else {
+        list.sort(function (a, b) {
+          var nameA = (a.counter_type || "").toLowerCase();
+          var nameB = (b.counter_type || "").toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+      }
+      return list;
+    }
+
+    function loadDashboard() {
+      setLoading(true);
+      setError(null);
+
+      var monthRange = getMonthRange(selectedMonth);
+      setMonthTitle(getMonthTitle(selectedMonth));
+
+      var objectsQuery = supabase
+        .from("objects")
+        .select("id, object_name, object_address, assigned_employee_id")
+        .eq("is_active", true);
+
+      if (props.employee && props.employee.role === "user") {
+        objectsQuery = objectsQuery.eq("assigned_employee_id", props.employee.id);
+      }
+
+      objectsQuery
+        .then(function (objectsRes) {
+          if (objectsRes.error) {
+            setError("Ошибка загрузки объектов: " + objectsRes.error.message);
+            setLoading(false);
+            return;
+          }
+
+          var objects = objectsRes.data || [];
+          if (objects.length === 0) {
+            setDashboardRows([]);
+            setLoading(false);
+            return;
+          }
+
+          var objectIds = objects.map(function (o) { return o.id; });
+
+          supabase
+            .from("counters")
+            .select("id, object_id, counter_type, counter_number")
+            .in("object_id", objectIds)
+            .eq("is_active", true)
+            .then(function (countersRes) {
+              if (countersRes.error) {
+                setError("Ошибка загрузки счётчиков: " + countersRes.error.message);
+                setLoading(false);
+                return;
+              }
+
+              var counters = countersRes.data || [];
+              var countersByObjectId = {};
+              for (var i = 0; i < counters.length; i++) {
+                var counter = counters[i];
+                if (!countersByObjectId[counter.object_id]) {
+                  countersByObjectId[counter.object_id] = [];
+                }
+                countersByObjectId[counter.object_id].push(counter);
+              }
+
+              var counterIds = counters.map(function (c) { return c.id; });
+              if (counterIds.length === 0) {
+                var noCounterRows = objects.map(function (obj) {
+                  return {
+                    id: obj.id,
+                    object_name: obj.object_name,
+                    object_address: obj.object_address,
+                    counters: [],
+                    totalCounters: 0,
+                    filledCounters: 0,
+                    hasMissing: false
+                  };
+                });
+                setDashboardRows(noCounterRows);
+                setLoading(false);
+                return;
+              }
+
+              supabase
+                .from("meter_readings")
+                .select("id, counter_id, reading_date, indication, submitted_by_employee_id, created_at")
+                .in("counter_id", counterIds)
+                .gte("reading_date", monthRange.monthStart)
+                .lt("reading_date", monthRange.monthEnd)
+                .then(function (readingsRes) {
+                  if (readingsRes.error) {
+                    setError("Ошибка загрузки показаний: " + readingsRes.error.message);
+                    setLoading(false);
+                    return;
+                  }
+
+                  var readings = readingsRes.data || [];
+                  var latestByCounterId = {};
+                  for (var r = 0; r < readings.length; r++) {
+                    var row = readings[r];
+                    var prev = latestByCounterId[row.counter_id];
+                    if (!prev) {
+                      latestByCounterId[row.counter_id] = row;
+                    } else {
+                      var prevDate = (prev.reading_date || "") + "|" + (prev.created_at || "");
+                      var rowDate = (row.reading_date || "") + "|" + (row.created_at || "");
+                      if (rowDate > prevDate) {
+                        latestByCounterId[row.counter_id] = row;
+                      }
+                    }
+                  }
+
+                  var employeeIdsMap = {};
+                  for (var key in latestByCounterId) {
+                    if (!Object.prototype.hasOwnProperty.call(latestByCounterId, key)) continue;
+                    var submitterId = latestByCounterId[key].submitted_by_employee_id;
+                    if (submitterId != null) {
+                      employeeIdsMap[String(submitterId)] = true;
+                    }
+                  }
+                  var employeeIds = Object.keys(employeeIdsMap);
+
+                  function finalizeRows(employeesById) {
+                    var rows = objects.map(function (obj) {
+                      var objectCounters = buildSortedCounters(countersByObjectId[obj.id] || []);
+                      var preparedCounters = objectCounters.map(function (counter) {
+                        var reading = latestByCounterId[counter.id] || null;
+                        var isFilled = !!(reading && reading.indication != null && String(reading.indication).trim() !== "");
+                        var employeeName = "—";
+                        if (reading && reading.submitted_by_employee_id != null) {
+                          var employee = employeesById[String(reading.submitted_by_employee_id)];
+                          if (employee) {
+                            employeeName = ((employee.first_name || "") + " " + (employee.last_name || "")).trim() || employee.email || "—";
+                          }
+                        }
+                        return {
+                          id: counter.id,
+                          counterLabel: counter.counter_type + (counter.counter_number ? " № " + counter.counter_number : ""),
+                          isFilled: isFilled,
+                          employeeName: employeeName
+                        };
+                      });
+
+                      var totalCounters = preparedCounters.length;
+                      var filledCounters = preparedCounters.filter(function (c) { return c.isFilled; }).length;
+                      return {
+                        id: obj.id,
+                        object_name: obj.object_name,
+                        object_address: obj.object_address,
+                        counters: preparedCounters,
+                        totalCounters: totalCounters,
+                        filledCounters: filledCounters,
+                        hasMissing: totalCounters > 0 && filledCounters < totalCounters
+                      };
+                    });
+
+                    setDashboardRows(rows);
+                    setLoading(false);
+                  }
+
+                  if (employeeIds.length === 0) {
+                    finalizeRows({});
+                    return;
+                  }
+
+                  supabase
+                    .from("employees")
+                    .select("id, first_name, last_name, email")
+                    .in("id", employeeIds)
+                    .then(function (employeesRes) {
+                      if (employeesRes.error) {
+                        setError("Ошибка загрузки сотрудников: " + employeesRes.error.message);
+                        setLoading(false);
+                        return;
+                      }
+
+                      var map = {};
+                      var employees = employeesRes.data || [];
+                      for (var e = 0; e < employees.length; e++) {
+                        map[String(employees[e].id)] = employees[e];
+                      }
+                      finalizeRows(map);
+                    })
+                    .catch(function (err) {
+                      console.error(err);
+                      setError("Ошибка при загрузке сотрудников");
+                      setLoading(false);
+                    });
+                })
+                .catch(function (err) {
+                  console.error(err);
+                  setError("Ошибка при загрузке показаний");
+                  setLoading(false);
+                });
+            })
+            .catch(function (err) {
+              console.error(err);
+              setError("Ошибка при загрузке счётчиков");
+              setLoading(false);
+            });
+        })
+        .catch(function (err) {
+          console.error(err);
+          setError("Ошибка при загрузке данных дашборда");
+          setLoading(false);
+        });
+    }
+
+    var visibleRows = dashboardRows.filter(function (row) {
+      if (!onlyIncomplete) return true;
+      return row.hasMissing;
+    });
+
+    visibleRows.sort(function (a, b) {
+      if (sortMode === "missing-first") {
+        if (a.hasMissing !== b.hasMissing) return a.hasMissing ? -1 : 1;
+      }
+      var nameA = (a.object_name || "").toLowerCase();
+      var nameB = (b.object_name || "").toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+
+    var incompleteObjectsCount = dashboardRows.filter(function (row) {
+      return row.hasMissing;
+    }).length;
+    var totalObjectsCount = dashboardRows.length;
+
+    return React.createElement(
+      "div",
+      null,
+      React.createElement(
+        "div",
+        { className: "top-bar" },
+        React.createElement(
+          "button",
+          {
+            className: "back-button",
+            onClick: function () {
+              props.onNavigate("menu");
+            },
+          },
+          "← Назад в меню"
+        ),
+        React.createElement(
+          "button",
+          { className: "button-ghost", type: "button", onClick: loadDashboard },
+          loading ? "Обновление..." : "Обновить"
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "panel-header" },
+        React.createElement(
+          "div",
+          null,
+          React.createElement("div", { className: "panel-title" }, "Дашборд"),
+          React.createElement(
+            "div",
+            { className: "panel-subtitle" },
+            "Статус заполнения показаний за ",
+            monthTitle || "текущий месяц"
+          )
+        ),
+        React.createElement(
+          "div",
+          { style: { display: "flex", alignItems: "center", gap: "8px" } },
+          React.createElement(
+            "span",
+            { className: "status-pill" },
+            "Незаполненные объекты: ",
+            incompleteObjectsCount,
+            " / ",
+            totalObjectsCount
+          ),
+          React.createElement("span", { className: "badge" }, "Блок 08")
+        )
+      ),
+      React.createElement("div", { className: "divider" }),
+      React.createElement(
+        "div",
+        { className: "dashboard-controls" },
+        React.createElement(
+          "div",
+          { className: "dashboard-sort" },
+          React.createElement("span", { className: "field-label", style: { marginBottom: "0" } }, "Месяц"),
+          React.createElement("input", {
+            className: "input",
+            type: "month",
+            value: selectedMonth,
+            onChange: function (e) { setSelectedMonth(e.target.value); },
+            style: { maxWidth: "180px", marginTop: "0" }
+          })
+        ),
+        React.createElement(
+          "label",
+          { className: "dashboard-checkbox" },
+          React.createElement("input", {
+            type: "checkbox",
+            checked: onlyIncomplete,
+            onChange: function (e) { setOnlyIncomplete(e.target.checked); }
+          }),
+          React.createElement("span", null, "Только незаполненные")
+        ),
+        React.createElement(
+          "div",
+          { className: "dashboard-sort" },
+          React.createElement("span", { className: "field-label", style: { marginBottom: "0" } }, "Сортировка"),
+          React.createElement(
+            "select",
+            {
+              className: "input",
+              value: sortMode,
+              onChange: function (e) { setSortMode(e.target.value); },
+              style: { maxWidth: "250px", marginTop: "0" }
+            },
+            React.createElement("option", { value: "name" }, "По названию"),
+            React.createElement("option", { value: "missing-first" }, "Сначала незаполненные")
+          )
+        )
+      ),
+      loading && React.createElement(
+        "div",
+        { className: "hint", style: { marginTop: "10px" } },
+        "⏳ Загружаем статус объектов..."
+      ),
+      error && React.createElement(
+        "div",
+        { className: "alert alert-error" },
+        React.createElement("div", { className: "alert-icon" }, "!"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Ошибка"),
+          React.createElement("div", { className: "alert-text" }, error)
+        )
+      ),
+      !loading && !error && visibleRows.length === 0 && React.createElement(
+        "div",
+        { className: "alert alert-info" },
+        React.createElement("div", { className: "alert-icon" }, "i"),
+        React.createElement(
+          "div",
+          { className: "alert-body" },
+          React.createElement("div", { className: "alert-title" }, "Нет данных для отображения"),
+          React.createElement(
+            "div",
+            { className: "alert-text" },
+            onlyIncomplete
+              ? "Все объекты с активными счётчиками уже заполнены за текущий месяц."
+              : "Нет активных объектов для текущего пользователя."
+          )
+        )
+      ),
+      !loading && !error && visibleRows.length > 0 && React.createElement(
+        "div",
+        { className: "dashboard-list" },
+        visibleRows.map(function (obj) {
+          return React.createElement(
+            "div",
+            { key: obj.id, className: "dashboard-object-card" },
+            React.createElement(
+              "div",
+              { className: "dashboard-object-header" },
+              React.createElement(
+                "div",
+                null,
+                React.createElement(
+                  "div",
+                  { className: "dashboard-object-title" },
+                  obj.object_name || "Без названия"
+                ),
+                React.createElement(
+                  "div",
+                  { className: "dashboard-object-subtitle" },
+                  obj.object_address || "Адрес не указан"
+                )
+              ),
+              obj.totalCounters > 0
+                ? React.createElement(
+                    "span",
+                    { className: "status-pill" },
+                    React.createElement("span", { className: "status-dot " + (obj.hasMissing ? "" : "ok") }),
+                    obj.filledCounters + "/" + obj.totalCounters + " заполнено"
+                  )
+                : React.createElement("span", { className: "status-pill status-pill-neutral" }, "Нет активных счётчиков")
+            ),
+            obj.counters.length > 0
+              ? React.createElement(
+                  "div",
+                  { className: "dashboard-counter-list" },
+                  obj.counters.map(function (counter) {
+                    return React.createElement(
+                      "div",
+                      { key: counter.id, className: "dashboard-counter-row" },
+                      React.createElement(
+                        "div",
+                        { className: "dashboard-counter-name" },
+                        counter.counterLabel
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "dashboard-counter-status" },
+                        React.createElement(
+                          "span",
+                          { className: "status-pill" },
+                          React.createElement("span", { className: "status-dot " + (counter.isFilled ? "ok" : "") }),
+                          counter.isFilled ? "Заполнено" : "Не заполнено"
+                        ),
+                        React.createElement(
+                          "span",
+                          { className: "dashboard-employee" },
+                          counter.isFilled ? counter.employeeName : "—"
+                        )
+                      )
+                    );
+                  })
+                )
+              : React.createElement(
+                  "div",
+                  { className: "hint", style: { marginTop: "6px" } },
+                  "У объекта нет активных счётчиков."
+                )
+          );
+        })
+      )
+    );
+  }
 
   function ReadingsScreen(props) {
     var searchQueryState = useState("");
@@ -3531,6 +4051,7 @@
         }
         
         if (hasChanges) {
+          updateData.submitted_by_employee_id = props.employee.id;
           console.log("Updating reading", reading.id, updateData);
           updatePromises.push(
             supabase
@@ -7375,12 +7896,20 @@
       screenContent = React.createElement(EditObjectScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
+        employee: props.employee,
         counterTypes: counterTypes,
         owners: owners,
         operators: operators,
       });
     } else if (currentScreen === "stats") {
       screenContent = React.createElement(StatsScreen, {
+        onNavigate: handleNavigate,
+        onLogout: props.onLogout,
+        employee: props.employee,
+        counterTypes: counterTypes,
+      });
+    } else if (currentScreen === "dashboard") {
+      screenContent = React.createElement(DashboardScreen, {
         onNavigate: handleNavigate,
         onLogout: props.onLogout,
         employee: props.employee,
